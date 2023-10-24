@@ -1,0 +1,15 @@
+---
+apt_pkg:
+  - exa
+  - tcpdump
+  - htop
+  - ncat
+  - socat
+  - dstat
+  - snapd
+munge_pkg:
+  - munge
+slurm_pkg:
+  - munge
+  - slurmd
+  - slurm-client

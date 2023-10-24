@@ -1,0 +1,16 @@
+[master]
+clusterhat
+
+[zerocluster]
+z1
+z2
+z3
+z4
+
+[munge:children]
+master
+zerocluster
+
+[slurm:children]
+master
+zerocluster

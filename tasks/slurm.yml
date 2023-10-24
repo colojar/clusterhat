@@ -1,0 +1,27 @@
+---
+- name: Install slurm
+  apt:
+    name: "{{ slurm_pkg }}"
+
+- name: Copy slurm config files
+  copy:
+    src: "files/slurm/{{ item }}"
+    dest: "/etc/slurm/{{ item }}"
+  with_items: "{{ slurm_config_files }}"
+
+- name: Enable and restart slurmd
+  systemd:
+    name: "{{ item }}"
+    state: restarted
+    enabled: yes
+  with_items:
+    - slurmd
+
+- name: Enable and restart slurmctld
+  systemd:
+    name: "{{ item }}"
+    state: restarted
+    enabled: yes
+  with_items:
+    - slurmctld
+  when: "'master' in group_names"

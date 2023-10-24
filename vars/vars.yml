@@ -1,0 +1,5 @@
+---
+usbboot_uninstall: yes
+clhat_mpnt:        /opt/data
+usbboot_img:       "/opt/data/sources/os/images/2022-01-28-1-ClusterCTRL-armhf-lite-usbboot.tar.xz"
+node_img:          "/opt/data/sources/os/images/2022-01-28-1-ClusterCTRL-armhf-lite-{{ inventory_hostname }}.img"

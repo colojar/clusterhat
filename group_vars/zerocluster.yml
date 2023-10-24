@@ -1,0 +1,12 @@
+---
+apt_pkg:
+  - htop
+  - ncat
+  - dstat
+  - exa
+munge_pkg:
+  - munge
+slurm_pkg:
+  - munge
+  - slurmd
+  - slurm-client

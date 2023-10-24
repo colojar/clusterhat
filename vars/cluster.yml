@@ -1,0 +1,3 @@
+---
+munge: yes
+slurm: yes # Depends on munge

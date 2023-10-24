@@ -1,0 +1,50 @@
+{% if inventory_hostname != 'controller' %}
+Host controller
+    Hostname 172.19.181.254
+    User pi
+{% endif %}
+{% if inventory_hostname != 'z1' %}
+Host z1
+    Hostname 172.19.181.1
+    User pi
+{% endif %}
+{% if inventory_hostname != 'z2' %}
+Host z2
+    Hostname 172.19.181.2
+    User pi
+{% endif %}
+{% if inventory_hostname != 'z3' %}
+Host z3
+    Hostname 172.19.181.3
+    User pi
+{% endif %}
+{% if inventory_hostname != 'z4' %}
+Host z4
+    Hostname 172.19.181.4
+    User pi
+{% endif %}
+{% if inventory_hostname != 'clusterhat' %}
+Host clusterhat
+    Hostname 172.16.2.200
+    User pi
+{% endif %}
+{% if inventory_hostname != 'p1' %}
+Host p1
+    Hostname 172.16.2.201
+    User pi
+{% endif %}
+{% if inventory_hostname != 'p2' %}
+Host p2
+    Hostname 172.16.2.202
+    User pi
+{% endif %}
+{% if inventory_hostname != 'p3' %}
+Host p3
+    Hostname 172.16.2.203
+    User pi
+{% endif %}
+{% if inventory_hostname != 'p4' %}
+Host p4
+    Hostname 172.16.2.204
+    User pi
+{% endif %}

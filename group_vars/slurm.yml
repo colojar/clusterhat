@@ -1,0 +1,8 @@
+---
+clusterName: 'cluster'
+selectType: 'select/cons_res'
+selectTypeParameters: 'CR_Core'
+slurm_config_files:
+  - slurm.conf
+  - cgroup.conf
+  - cgroup_allowed_devices_file.conf

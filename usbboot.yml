@@ -1,0 +1,22 @@
+---
+- name: Clusterhat set-up
+  hosts: localhost
+  gather_facts: yes
+  vars_files:
+    - vars/vars.yml
+  tasks:
+    - name: Set up usbboot
+      include_tasks: tasks/usbboot.yml
+
+    - name: Start zerocluster
+      command: clusterctrl on
+
+    - name: Wait until all nodes are started
+      wait_for:
+        port: 22
+        host: "{{ inventory_hostname }}"
+        search_regex: OpenSSH
+        delay: 10
+      connection: local
+
+# vim: set ft=yaml.ansible ts=4 sw=2 tw=80 et :

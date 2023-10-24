@@ -1,0 +1,13 @@
+---
+- name: Fix root tree ownership
+  file:
+    path: "{{ item }}"
+    owner: root
+    group: root
+    state: directory
+  with_items:
+    - /
+    - /etc
+    - /sbin
+    - /usr
+  become: yes

@@ -1,0 +1,42 @@
+---
+- name: Stop cluster
+  command: clusterctrl off
+  when: usbboot_uninstall
+
+- name: Clean previous installation
+  command: rm -rf /var/lib/clusterctrl/nfs/p[1234]/{*,.*}
+  args:
+    warn: false
+  become: yes
+  when: usbboot_uninstall
+
+- meta: end_play
+  when: usbboot_uninstall
+
+- name: Extract usbboot image
+  unarchive:
+    src: "{{ usbboot_img }}"
+    dest: "/var/lib/clusterctrl/nfs/{{ item }}/"
+  become: yes
+  with_items: "{{ groups['picluster'] }}"
+
+- name: usbboot init
+  command: "usbboot-init {{ item }}"
+  become: yes
+  with_items: "{{ groups['picluster'][-1] }}"
+
+- name: Create .ssh folder
+  file:
+    path: "/var/lib/clusterctrl/nfs/{{ item }}/home/pi/.ssh"
+    state: directory
+    mode: 0700
+  with_items: "{{ groups['picluster'] }}"
+
+- name: Create authorized_keys file
+  copy:
+    src: /home/pi/.ssh/id_rsa.pub
+    dest: "/var/lib/clusterctrl/nfs/{{ item }}/home/pi/.ssh/authorized_keys"
+    owner: pi
+    group: pi
+    mode: 0600
+  with_items: "{{ groups['picluster'] }}"
