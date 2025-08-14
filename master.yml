@@ -1,7 +1,7 @@
 ---
 - name: Clusterhat set-up
   hosts: master
-  become: yes
+  become: true
   vars_files:
     - vars/vars.yml
   roles:
@@ -10,13 +10,12 @@
       packages: "{{ apt_pkg }}"
   tasks:
     - name: Fix root permissions
-      include_tasks: tasks/fixroot.yml
+      ansible.builtin.include_tasks: tasks/fixroot.yml
 
     - name: Configure master OS
-      include_tasks: tasks/master.yml
+      ansible.builtin.include_tasks: tasks/master.yml
       when: "'master' in group_names"
 
     - name: Set up ssh
-      include_tasks: tasks/ssh.yml
-
+      ansible.builtin.include_tasks: tasks/ssh.yml
 # vim: set ft=yaml.ansible ts=4 sw=2 tw=80 et :

@@ -1,13 +1,13 @@
 ---
 - name: Clusterhat set-up
   hosts: zerocluster
-  gather_facts: no
-  become: yes
+  gather_facts: false
+  become: true
   vars_files:
     - vars/vars.yml
   tasks:
     - name: Wait until all nodes are started
-      wait_for:
+      ansible.builtin.wait_for:
         port: 22
         host: "{{ inventory_hostname }}"
         search_regex: OpenSSH
@@ -15,9 +15,8 @@
       connection: local
 
     - name: Set up boot from sdcard
-      include_tasks: tasks/sdcboot.yml
+      ansible.builtin.include_tasks: tasks/sdcboot.yml
 
     - name: Restarting the cluster
-      reboot:
-
+      ansible.builtin.reboot:
 # vim: set ft=yaml.ansible ts=4 sw=2 tw=80 et :

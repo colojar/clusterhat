@@ -1,12 +1,12 @@
 ---
 - name: Hostname | Setting up hostname
-  become: yes
-  hostname:
+  become: true
+  ansible.builtin.hostname:
     name: "{{ hostname_fqdn_full }}"
 
 - name: Hostname | Update the IPv4 part of hosts file
-  become: yes
-  lineinfile:
+  become: true
+  ansible.builtin.lineinfile:
     dest: "{{ hostname_hosts_file_location }}"
     regexp: "^127.0.0.1"
     line: "127.0.0.1{{ '\t' }}{{ hostname_fqdn_full }}{% if hostname_fqdn_full != hostname_fqdn_short %}{{ '\t' }}{{ hostname_fqdn_short }}{{ '\t' }}{% endif %}localhost localhost.localdomain localhost4 localhost4.localdomain4"
@@ -14,11 +14,10 @@
     backup: "{{ hostname_hosts_backup }}"
 
 - name: Hostname | Update the IPv6 part of hosts file
-  become: yes
+  ansible.builtin.become: true
   lineinfile:
     dest: "{{ hostname_hosts_file_location }}"
     regexp: "^::1"
     line: "::1{{ '\t\t' }}{{ hostname_fqdn_full }}{% if hostname_fqdn_full != hostname_fqdn_short %}{{ '\t' }}{{ hostname_fqdn_short }}{% endif %}{{ '\t' }}localhost localhost.localdomain localhost6 localhost4.localdomain6 ip6-localhost ip6-loopback"
     state: present
-
 # vim: set ft=yaml.ansible ts=4 sw=2 tw=80 et :

@@ -18,19 +18,19 @@
     src: "{{ usbboot_img }}"
     dest: "/var/lib/clusterctrl/nfs/{{ item }}/"
   become: yes
-  with_items: "{{ groups['picluster'] }}"
+  with_items: "{{ groups['zerocluster'] }}"
 
 - name: usbboot init
   command: "usbboot-init {{ item }}"
   become: yes
-  with_items: "{{ groups['picluster'][-1] }}"
+  with_items: "{{ groups['zerocluster'][-1] }}"
 
 - name: Create .ssh folder
   file:
     path: "/var/lib/clusterctrl/nfs/{{ item }}/home/pi/.ssh"
     state: directory
     mode: 0700
-  with_items: "{{ groups['picluster'] }}"
+  with_items: "{{ groups['zerocluster'] }}"
 
 - name: Create authorized_keys file
   copy:
@@ -39,4 +39,4 @@
     owner: pi
     group: pi
     mode: 0600
-  with_items: "{{ groups['picluster'] }}"
+  with_items: "{{ groups['zerocluster'] }}"

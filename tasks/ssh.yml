@@ -6,11 +6,10 @@
     size: 4096
     state: present
     force: no
-  become: no
+  become: false
 
 - name: Create ssh config file
-  template:
+  ansible.builtin.template:
     src: templates/ssh_config.j2
     dest: ~/.ssh/config
-  become: no
-
+  become: false

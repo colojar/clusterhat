@@ -1,16 +1,16 @@
 ---
 - name: Install slurm
-  apt:
+  ansible.builtin.apt:
     name: "{{ slurm_pkg }}"
 
 - name: Copy slurm config files
-  copy:
+  ansible.builtin.copy:
     src: "files/slurm/{{ item }}"
     dest: "/etc/slurm/{{ item }}"
   with_items: "{{ slurm_config_files }}"
 
 - name: Enable and restart slurmd
-  systemd:
+  ansible.builtin.systemd:
     name: "{{ item }}"
     state: restarted
     enabled: yes
@@ -18,7 +18,7 @@
     - slurmd
 
 - name: Enable and restart slurmctld
-  systemd:
+  ansible.builtin.systemd:
     name: "{{ item }}"
     state: restarted
     enabled: yes

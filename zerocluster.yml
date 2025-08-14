@@ -1,7 +1,7 @@
 ---
 - name: Cluster set-up
   hosts: master:zerocluster
-  become: yes
+  become: true
   vars_files:
     - vars/vars.yml
     - vars/cluster.yml
@@ -11,28 +11,28 @@
       packages: "{{ apt_pkg }}"
   tasks:
     - name: Fix root permissions
-      include_tasks: tasks/fixroot.yml
+      ansible.builtin.include_tasks: tasks/fixroot.yml
 
     - name: Configure master OS
-      include_tasks: tasks/master.yml
+      ansible.builtin.include_tasks: tasks/master.yml
       when: "'master' in group_names"
 
-    - name: Add static route for picluster to zerocluster
+    - name: Add static route for zerocluster
       copy:
-        src: files/picluster/40-route
+        src: files/zerocluster/40-route
         dest: /lib/dhcpcd/dhcpcd-hooks/40-route
         owner: root
         group: root
         mode: 0644
-      when: "'picluster' in group_names"
+      when: "'zerocluster' in group_names"
 
     - name: Apply the route
-      command: ip ro add 172.19.180.0/23 via 172.16.2.200 dev eth0
-      when: "'picluster' in group_names"
+      ansible.builtin.command: ip ro add 172.19.180.0/23 via 172.16.2.200 dev eth0
+      when: "'zerocluster' in group_names"
       ignore_errors: true
 
     - name: Mount master share
-      mount:
+      ansible.builtin.mount:
         path: /opt/data
         src: 172.19.180.254:/opt/data
         opts: rw,sync,hard,intr
@@ -42,30 +42,29 @@
 
     - name: Create alias file
       become_user: pi
-      file:
+      ansible.builtin.file:
         path: ~/.bash_aliases
         state: touch
 
     - name: Set up aliases
       become_user: pi
-      lineinfile:
+      ansible.builtin.lineinfile:
         path: ~/.bash_aliases
         line: "{{ item }}"
-        state: present 
+        state: present
       with_items:
         - 'alias ll="exa -Slhg --icons"'
         - 'alias la="exa -Slhga --icons"'
         - 'alias lt="exa -T --icons"'
 
     - name: Set up ssh
-      include_tasks: tasks/ssh.yml
+      ansible.builtin.include_tasks: tasks/ssh.yml
 
     - name: Configure munge
-      include_tasks: tasks/munge.yml
+      ansible.builtin.include_tasks: tasks/munge.yml
       when: munge
 
     - name: Configure slurm
-      include_tasks: tasks/slurm.yml
+      ansible.builtin.include_tasks: tasks/slurm.yml
       when: slurm
-
 # vim: set ft=yaml.ansible ts=4 sw=2 tw=80 et :

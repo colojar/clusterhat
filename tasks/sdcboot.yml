@@ -1,6 +1,6 @@
 ---
 - name: Create mountpoints
-  file:
+  ansible.builtin.file:
     path: "{{ item }}"
     state: directory
   with_items:
@@ -9,7 +9,7 @@
     - /opt/data
 
 - name: Mount master share
-  mount:
+  ansible.builtin.mount:
     path: /opt/data
     src: 172.19.180.254:/opt/data
     opts: rw,sync,hard,intr
@@ -17,10 +17,10 @@
     fstype: nfs
 
 - name: dd clusterhat image to /dev/mmcblk0
-  command: "dd if={{ node_img }} of=/dev/mmcblk0 bs=2M"
+  ansible.builtin.command: "dd if={{ node_img }} of=/dev/mmcblk0 bs=2M"
 
 - name: Mount sdcard filesystems
-  mount:
+  ansible.builtin.mount:
     path: "{{ item.path }}"
     src: "{{ item.src }}"
     fstype: "{{ item.fstype }}"
@@ -30,13 +30,13 @@
     - { path: "/mnt/root", src: "/dev/mmcblk0p2", fstype: "ext4" }
 
 - name: Create .ssh folder
-  file:
+  ansible.builtin.file:
     path: /mnt/root/home/pi/.ssh
     state: directory
     mode: 0700
 
 - name: Create authorized_keys file
-  copy:
+  ansible.builtin.copy:
     src: /home/pi/.ssh/id_rsa.pub
     dest: /mnt/root/home/pi/.ssh/authorized_keys
     owner: pi
@@ -44,7 +44,7 @@
     mode: 0600
 
 - name: Unmount sdcard
-  mount:
+  ansible.builtin.mount:
     path: "{{ item.path }}"
     src: "{{ item.src }}"
     fstype: "{{ item.fstype }}"

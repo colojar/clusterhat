@@ -1,8 +1,8 @@
 ---
 - name: Populate /etc/hosts
-  lineinfile:
+  ansible.builtin.lineinfile:
     dest: /etc/hosts
-    regexp: '.*{{ item.hostname }}$'
+    regexp: ".*{{ item.hostname }}$"
     line: "{{ item.address }} {{ item.hostname }}"
     state: present
   with_items:
@@ -17,29 +17,28 @@
     - { hostname: p3, address: 172.16.2.203 }
     - { hostname: p4, address: 172.16.2.204 }
 
-- name: Create mountpoints
-  file:
+- name: "Create mountpoints"
+  ansible.builtin.file:
     path: "{{ clhat_mpnt }}"
     state: directory
     owner: root
     group: pi
     mode: 2775
 
-- name: Export /opt/data
-  lineinfile:
+- name: "Export /opt/data"
+  ansible.builtin.lineinfile:
     dest: /etc/exports
     regexp: "^{{ item | regex_replace('(\\S+)\\s+.*', '\\1') }}\\s+.*$"
     line: "{{ item }}"
     state: present
   with_items:
-    - '/opt/data  *(rw,fsid=1,no_root_squash,no_subtree_check,insecure)'
+    - "/opt/data  *(rw,fsid=1,no_root_squash,no_subtree_check,insecure)"
 
-- name: reload nfsd
+- name: "Reload nfsd"
   ansible.builtin.systemd:
-    daemon_reload: yes
+    daemon_reload: true
     state: started
     name: nfs-kernel-server.service
 
-- name: export shares
-  command: exportfs -rav
-
+- name: "Export shares"
+  ansible.builtin.command: exportfs -rav

@@ -1,6 +1,6 @@
 ---
 - name: Fix root tree ownership
-  file:
+  ansible.builtin.file:
     path: "{{ item }}"
     owner: root
     group: root
@@ -10,4 +10,4 @@
     - /etc
     - /sbin
     - /usr
-  become: yes
+  become: true
