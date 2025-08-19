@@ -1,0 +1,7 @@
+---
+galaxy_info:
+  author: local
+  description: Generate per-node SSH keypairs and mesh authorized_keys
+  license: MIT
+  min_ansible_version: '2.12'
+dependencies: []

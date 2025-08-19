@@ -1,0 +1,46 @@
+---
+# Role: ssh_mesh - per-node keypair and mutual trust between all nodes
+# Generates a unique keypair on every host and aggregates all public keys
+# into each host's authorized_keys (mesh SSH without password).
+
+- name: Ensure .ssh directory exists
+  ansible.builtin.file:
+    path: "/home/{{ mesh_user }}/.ssh"
+    state: directory
+    owner: "{{ mesh_user }}"
+    group: "{{ mesh_user }}"
+    mode: '0700'
+
+- name: Generate keypair if missing
+  ansible.builtin.command: >-
+    ssh-keygen -t ed25519 -N '' -f /home/{{ mesh_user }}/.ssh/id_ed25519
+  args:
+    creates: "/home/{{ mesh_user }}/.ssh/id_ed25519"
+  register: keygen_result
+  changed_when: keygen_result.rc == 0
+  become: true
+  become_user: "{{ mesh_user }}"
+
+- name: Read public key
+  ansible.builtin.slurp:
+    src: "/home/{{ mesh_user }}/.ssh/id_ed25519.pub"
+  register: mesh_pub
+
+- name: Aggregate all public keys (run once per host but gather from all)
+  ansible.builtin.set_fact:
+    ssh_mesh_all_keys: "{{ (hostvars | dict2items | map(attribute='value.mesh_pub') | selectattr('content','defined') | map(attribute='content') | map('b64decode') | list) }}"
+  run_once: true
+  delegate_to: localhost
+
+- name: Distribute aggregated authorized_keys
+  ansible.builtin.copy:
+    dest: "/home/{{ mesh_user }}/.ssh/authorized_keys"
+    content: |-
+  {% if cluster_public_ssh_key is defined %}{{ cluster_public_ssh_key | trim }}
+  {% endif %}
+  {% for k in ssh_mesh_all_keys %}{{ k | trim }}
+  {% endfor %}
+    owner: "{{ mesh_user }}"
+    group: "{{ mesh_user }}"
+    mode: '0600'
+

@@ -1,0 +1,3 @@
+---
+# Default user for SSH mesh; follows pi_user if defined
+mesh_user: "{{ pi_user | default('pi') }}"
