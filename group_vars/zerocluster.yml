@@ -1,9 +1,4 @@
 ---
-apt_pkg_extra:
-  - htop
-  - ncat
-  - dstat
-  - exa
 munge_pkg:
   - munge
 slurm_pkg:

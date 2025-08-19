@@ -1,6 +1,5 @@
 ---
 usbboot_uninstall: no
-clhat_mpnt:        /opt/data
 usbboot_img:       "https://dist1.8086.net/clusterctrl/usbboot/bookworm/2024-07-04/2024-07-04-3-bookworm-ClusterCTRL-armhf-lite-usbboot.tar.xz"
 usbboot_img_checksum: ''   # Optional sha256:HEX or md5:HEX to verify download (leave empty to skip)
 clusterctrl_bin:   "/usr/sbin/clusterctrl"
@@ -13,5 +12,6 @@ usbboot_wait_for_ssh: true                                           # After pow
 usbboot_ssh_wait_timeout: 300                                        # Seconds to wait for SSH per node
 usbboot_force_reextract: false                                       # Force re-extract even if marker present
 usbboot_always_refresh: true                                         # When true always clean/extract; when false use marker idempotence
-power_on: true                                                       # Auto power on Zero ports after provisioning
+usbboot_manage_hosts: true                                           # Inject cluster host entries into each zero rootfs /etc/hosts
+power_on: true                                                      # Auto power on Zero ports after provisioning
 usbboot_cnat_net: "172.19.181"                                       # Base CNAT network (controller .254, zeros .1-.4)

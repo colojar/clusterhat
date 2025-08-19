@@ -13,7 +13,6 @@
   loop: "{{ groups['zerocluster'] | default([]) }}"
   when: usbboot_uninstall | default(false) | bool
   become: true
-  tags: ['usbboot','uninstall']
 
 - name: End play after uninstall if requested
   meta: end_play
@@ -24,7 +23,6 @@
     clusterctrl_bin: "/usr/sbin/clusterctrl"
   when: clusterctrl_bin is not defined
   run_once: true
-  tags: ['usbboot','prep']
 
 - name: Install prerequisite packages
   ansible.builtin.apt:
@@ -37,7 +35,6 @@
   become: true
   when: ansible_os_family == 'Debian' and not (usbboot_skip_prereq_install | default(false) | bool)
   run_once: true
-  tags: ['usbboot','deps']
 
 # Ensure NFS mountpoint exists and optional subdirectory for usbboot assets
 - name: Ensure cluster shared mountpoint
@@ -49,13 +46,11 @@
     group: sudo
   become: true
   run_once: true
-  tags: ['usbboot','prep']
 
 - name: Set local archive path
   ansible.builtin.set_fact:
     usbboot_local_archive_path: "{{ usbboot_download_dir }}/{{ usbboot_img | basename }}"
   run_once: true
-  tags: ['usbboot','download']
 
 - name: Download usbboot image to controller
   ansible.builtin.get_url:
@@ -66,74 +61,41 @@
   when: usbboot_img is match('^https?://')
   register: usbboot_download
   run_once: true
-  tags: ['usbboot','download']
 
 - name: Fail if archive missing after download attempt
   ansible.builtin.stat:
     path: "{{ usbboot_local_archive_path }}"
   register: usbboot_archive_stat
   run_once: true
-  tags: ['usbboot','download']
 
 - name: Abort when archive not present
   ansible.builtin.fail:
     msg: "usbboot archive not found at {{ usbboot_local_archive_path }} (download may have failed)"
   when: not usbboot_archive_stat.stat.exists
   run_once: true
-  tags: ['usbboot','download']
 
-- name: Stat existing extraction marker (idempotent mode)
-  ansible.builtin.stat:
-    path: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/.usbboot_extracted"
-  loop: "{{ groups['zerocluster'] }}"
-  loop_control:
-    loop_var: zero_node
-  register: existing_markers
-  changed_when: false
-  when: not usbboot_always_refresh | bool
-  tags: ['usbboot','extract']
-
-- name: Clean node rootfs directory (when refreshing)
-  ansible.builtin.shell: >-
-    find /var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/ -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+- name: Clean node rootfs directory
+  ansible.builtin.shell: "rm -rf /var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/{*,.*} 2>/dev/null || true"
   loop: "{{ groups['zerocluster'] }}"
   loop_control:
     loop_var: zero_node
     label: "p{{ zero_node | regex_search('[0-9]+') }}"
   become: true
   changed_when: true
-  when: usbboot_always_refresh | bool or not existing_markers.results[loop.index0].stat.exists
-  tags: ['usbboot','extract']
 
-- name: Extract usbboot archive to node directory (unarchive)
-  ansible.builtin.unarchive:
-    src: "{{ usbboot_local_archive_path }}"
-    dest: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/"
-    remote_src: true
-    extra_opts: ["--strip-components=0"]
+- name: Extract usbboot archive to node directory
+  ansible.builtin.shell: "tar -axf {{ usbboot_local_archive_path }} -C /var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/"
   loop: "{{ groups['zerocluster'] }}"
   loop_control:
     loop_var: zero_node
     label: "p{{ zero_node | regex_search('[0-9]+') }}"
   become: true
   register: per_node_extract
-  when: usbboot_always_refresh | bool or not existing_markers.results[loop.index0].stat.exists
-  tags: ['usbboot','extract']
-
-- name: Write/refresh extraction marker
-  ansible.builtin.file:
-    path: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/.usbboot_extracted"
-    state: touch
-  loop: "{{ groups['zerocluster'] }}"
-  loop_control:
-    loop_var: zero_node
-  become: true
-  when: usbboot_always_refresh | bool or per_node_extract is changed
-  tags: ['usbboot','extract']
+  changed_when: true
 
 - name: Write userconf.txt for first boot user creation
   ansible.builtin.copy:
-    dest: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/boot/userconf.txt"
+    dest: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/boot/firmware/userconf.txt"
     content: "{{ pi_user }}:{{ pi_pwhash }}\n"
     mode: "0600"
   loop: "{{ groups['zerocluster'] }}"
@@ -142,18 +104,10 @@
     label: "p{{ zero_node | regex_search('[0-9]+') }}"
   become: true
   when: pi_user is defined and pi_pwhash is defined
-  tags: ['usbboot','config']
-
-- name: Fail if userconf incomplete
-  ansible.builtin.fail:
-    msg: "pi_user defined without pi_pwhash (or vice versa); both required for userconf.txt"
-  when: (pi_user is defined and pi_pwhash is not defined) or (pi_pwhash is defined and pi_user is not defined)
-  run_once: true
-  tags: ['usbboot','config']
 
 - name: Enable SSH by creating ssh flag file
   ansible.builtin.file:
-    path: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/boot/ssh"
+    path: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/boot/firmware/ssh"
     state: touch
     mode: "0644"
   loop: "{{ groups['zerocluster'] }}"
@@ -162,18 +116,28 @@
     label: "p{{ zero_node | regex_search('[0-9]+') }}"
   become: true
   when: usbboot_enable_ssh | default(true) | bool
-  tags: ['usbboot','config','ssh']
 
-- name: Run usbboot-init after userconf and ssh flag (conditional)
-  ansible.builtin.command: "usbboot-init {{ zero_node | regex_search('[0-9]+') }}"
+- name: Ensure user home .ssh directory (pre usbboot-init)
+  ansible.builtin.file:
+    path: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/home/{{ pi_user | default('pi') }}/.ssh"
+    state: directory
+    mode: '0700'
   loop: "{{ groups['zerocluster'] }}"
   loop_control:
     loop_var: zero_node
-    label: "p{{ zero_node | regex_search('[0-9]+') }}"
   become: true
-  when: usbboot_always_refresh | bool or per_node_extract.results[loop.index0].changed | default(false)
-  changed_when: false
-  tags: ['usbboot','init']
+  when: cluster_public_ssh_key is defined
+
+- name: Pre-populate authorized_keys in user home
+  ansible.builtin.copy:
+    dest: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/home/{{ pi_user | default('pi') }}/.ssh/authorized_keys"
+    content: "{{ cluster_public_ssh_key }}\n"
+    mode: '0600'
+  loop: "{{ groups['zerocluster'] }}"
+  loop_control:
+    loop_var: zero_node
+  become: true
+  when: cluster_public_ssh_key is defined
 
 - name: Ensure /opt/data mount point exists in rootfs
   ansible.builtin.file:
@@ -186,7 +150,6 @@
   loop_control:
     loop_var: zero_node
   become: true
-  tags: ['usbboot','nfs']
 
 - name: Add NFS share to fstab for zeros
   ansible.builtin.lineinfile:
@@ -200,11 +163,46 @@
     loop_var: zero_node
   become: true
   when: nfs_server_host is defined and nfs_export_path is defined
-  tags: ['usbboot','nfs']
+
+- name: Inject hosts entries for zerocluster and NFS server
+  ansible.builtin.blockinfile:
+    path: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/etc/hosts"
+    marker: "# {mark} ANSIBLE CLUSTER HOSTS"
+    block: |-
+      {% for z in groups['zerocluster'] %}
+      {{ usbboot_cnat_net }}.{{ loop.index }} {{ z }}
+      {% endfor %}
+      {% if (nfs_server_host_ip | default('')) | length > 0 %}
+      {{ nfs_server_host_ip }} {{ nfs_server_host }}
+      {% endif %}
+  loop: "{{ groups['zerocluster'] }}"
+  loop_control:
+    loop_var: zero_node
+  become: true
+  when: usbboot_manage_hosts | default(true) | bool
+
+- name: Add authorized_keys to user home
+  ansible.builtin.copy:
+    dest: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/home/{{ pi_user | default('pi') }}/.ssh/authorized_keys"
+    content: "{{ cluster_public_ssh_key }}\n"
+    mode: '0600'
+  loop: "{{ groups['zerocluster'] }}"
+  loop_control:
+    loop_var: zero_node
+  become: true
+  when: pi_user is defined and cluster_public_ssh_key is defined
+
+- name: Run usbboot-init after userconf and ssh flag (always)
+  ansible.builtin.command: "usbboot-init {{ zero_node | regex_search('[0-9]+') }}"
+  loop: "{{ groups['zerocluster'] }}"
+  loop_control:
+    loop_var: zero_node
+    label: "p{{ zero_node | regex_search('[0-9]+') }}"
+  become: true
+  changed_when: false
 
 - name: Display next steps
   ansible.builtin.debug:
     msg: >-
       USB boot root filesystems prepared for nodes {{ groups['zerocluster'] | join(', ') }}. 
       Use 'clusterctrl on pX' to power on individual nodes or 'clusterctrl on' for all nodes.
-  tags: ['usbboot','summary']

@@ -3,7 +3,7 @@
   hosts: clusterhat
   gather_facts: true
   vars_files:
-    - vars/vars.yml
+    - vars/usbboot.yml
   tasks:
     - name: Get Cluster Status
       ansible.builtin.command: "{{ clusterctrl_bin }} status"
