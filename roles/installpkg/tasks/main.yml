@@ -1,7 +1,7 @@
 ---
 - name: Install packages
   ansible.builtin.apt:
-    name: "{{ packages }}"
+    name: "{{ installpkg_packages }}"
     update_cache: true
 
 - name: Remove useless packages from the cache

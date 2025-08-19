@@ -1,0 +1,56 @@
+---
+- name: Determine if this host should run slurmstack
+  ansible.builtin.set_fact:
+    slurmstack_deploy: >-
+      {{ slurmstack_enable and (
+         ('zerocluster' in group_names) or ('master' in group_names) or
+         (slurmstack_include_picluster and ('picluster' in group_names))
+      ) and (inventory_hostname != 'p5') }}
+
+- name: Install munge packages
+  ansible.builtin.apt:
+    name: "{{ slurmstack_munge_pkg }}"
+    state: present
+    update_cache: true
+  when: slurmstack_deploy
+
+- name: Install slurm packages (controller)
+  ansible.builtin.apt:
+    name: "{{ slurmstack_slurm_pkgs_master }}"
+    state: present
+    update_cache: true
+  when: slurmstack_deploy and 'master' in group_names
+
+- name: Install slurm packages (node)
+  ansible.builtin.apt:
+    name: "{{ slurmstack_slurm_pkgs_node }}"
+    state: present
+    update_cache: true
+  when: slurmstack_deploy and 'master' not in group_names
+
+- name: Copy slurm config files
+  ansible.builtin.copy:
+    src: "files/slurm/{{ item }}"
+    dest: "/etc/slurm/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ slurmstack_config_files }}"
+  when: slurmstack_deploy
+  notify:
+    - Restart slurmd
+    - Restart slurmctld
+
+- name: Ensure slurmd service started
+  ansible.builtin.systemd:
+    name: slurmd
+    enabled: true
+    state: started
+  when: slurmstack_deploy
+
+- name: Ensure slurmctld service started (controller only)
+  ansible.builtin.systemd:
+    name: slurmctld
+    enabled: true
+    state: started
+  when: slurmstack_deploy and 'master' in group_names

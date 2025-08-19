@@ -3,7 +3,7 @@
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
-  with_items:
+  loop:
     - /mnt/root
     - /mnt/boot
     - /opt/data
@@ -16,16 +16,36 @@
     state: mounted
     fstype: nfs
 
-- name: dd clusterhat image to /dev/mmcblk0
-  ansible.builtin.command: "dd if={{ node_img }} of=/dev/mmcblk0 bs=2M"
+- name: Check existing image SHA (optional)
+  ansible.builtin.command: "sha256sum {{ node_img }}"
+  register: node_img_sum
+  changed_when: false
+  failed_when: false
+  when: node_img is defined
+
+- name: Write clusterhat image to /dev/mmcblk0 (skip if marker exists)
+  ansible.builtin.command: "dd if={{ node_img }} of=/dev/mmcblk0 bs=2M status=progress"
+  when: node_img is defined and (not sd_image_written.stat.exists)
+  notify: Sync disks
+
+- name: Create write marker
+  ansible.builtin.file:
+    path: /var/local/.clusterhat_sd_written
+    state: touch
+  when: node_img is defined and (not sd_image_written.stat.exists)
+
+- name: Stat write marker
+  ansible.builtin.stat:
+    path: /var/local/.clusterhat_sd_written
+  register: sd_image_written
 
 - name: Mount sdcard filesystems
   ansible.builtin.mount:
     path: "{{ item.path }}"
     src: "{{ item.src }}"
     fstype: "{{ item.fstype }}"
-    state: present
-  with_items:
+    state: mounted
+  loop:
     - { path: "/mnt/boot", src: "/dev/mmcblk0p1", fstype: "vfat" }
     - { path: "/mnt/root", src: "/dev/mmcblk0p2", fstype: "ext4" }
 
@@ -49,6 +69,6 @@
     src: "{{ item.src }}"
     fstype: "{{ item.fstype }}"
     state: absent
-  with_items:
+  loop:
     - { path: "/mnt/boot", src: "/dev/mmcblk0p1", fstype: "vfat" }
     - { path: "/mnt/root", src: "/dev/mmcblk0p2", fstype: "ext4" }

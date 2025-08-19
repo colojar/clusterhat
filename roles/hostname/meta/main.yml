@@ -1,6 +1,7 @@
 galaxy_info:
   author: Andrey Shpak
-  description: This role will set hostname on any target host. By default hostname is same as inventory_hostname, but can be set as different by using vars. Updates hosts file too.
+  description: >-
+    Set hostname on target host; defaults to inventory_hostname unless overridden via vars; also updates /etc/hosts.
   company: ""
   license: license (MIT)
   min_ansible_version: 2.2.1

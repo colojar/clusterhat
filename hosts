@@ -13,6 +13,10 @@ p2
 p3
 p4
 
+# Management / storage candidate (Pi5)
+[management]
+p5
+
 [munge:children]
 master
 zerocluster
@@ -20,3 +24,9 @@ zerocluster
 [slurm:children]
 master
 zerocluster
+; picluster  # uncomment if including p1-p4 in slurm (use slurm_include_picluster flag instead)
+
+[containers:children]
+master
+picluster
+management

@@ -1,11 +1,4 @@
 ---
-apt_pkg:
-  - tcpdump
-  - htop
-  - ncat
-  - socat
-  - dstat
-  - snapd
 slurm_pkg:
   - munge
   - slurm-wlm

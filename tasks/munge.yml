@@ -2,6 +2,8 @@
 - name: Install munge
   ansible.builtin.apt:
     name: "{{ munge_pkg }}"
+    state: present
+    update_cache: yes
 
 - name: Copy munge key to nodes
   ansible.builtin.copy:
@@ -9,10 +11,11 @@
     dest: /etc/munge/munge.key
     owner: munge
     group: munge
-  mode: "0600"
+    mode: "0600"
+  notify: Restart munge
 
-- name: Enable and restart munge
+- name: Ensure munge service enabled & started
   ansible.builtin.systemd:
     name: munge
-    state: restarted
-  enabled: true
+    enabled: true
+    state: started

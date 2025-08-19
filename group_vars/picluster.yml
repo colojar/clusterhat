@@ -1,12 +1,5 @@
 ---
-apt_pkg:
-  - exa
-  - tcpdump
-  - htop
-  - ncat
-  - socat
-  - dstat
-  - snapd
+apt_pkg_extra: []
 munge_pkg:
   - munge
 slurm_pkg:

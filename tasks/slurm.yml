@@ -1,27 +1,31 @@
 ---
-- name: Install slurm
+- name: Install slurm packages
   ansible.builtin.apt:
     name: "{{ slurm_pkg }}"
+    state: present
+    update_cache: yes
 
 - name: Copy slurm config files
   ansible.builtin.copy:
     src: "files/slurm/{{ item }}"
     dest: "/etc/slurm/{{ item }}"
-  with_items: "{{ slurm_config_files }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ slurm_config_files }}"
+  notify:
+    - Restart slurmd
+    - Restart slurmctld
 
-- name: Enable and restart slurmd
+- name: Ensure slurmd enabled & running
   ansible.builtin.systemd:
-    name: "{{ item }}"
-    state: restarted
-    enabled: yes
-  with_items:
-    - slurmd
+    name: slurmd
+    enabled: true
+    state: started
 
-- name: Enable and restart slurmctld
+- name: Ensure slurmctld enabled & running (master only)
   ansible.builtin.systemd:
-    name: "{{ item }}"
-    state: restarted
-    enabled: yes
-  with_items:
-    - slurmctld
+    name: slurmctld
+    enabled: true
+    state: started
   when: "'master' in group_names"

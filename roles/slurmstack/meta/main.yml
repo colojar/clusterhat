@@ -1,0 +1,5 @@
+---
+collections:
+  - ansible.builtin
+  - community.general
+  - ansible.utils

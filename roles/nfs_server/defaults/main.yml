@@ -1,0 +1,4 @@
+---
+nfs_server_enable: true
+nfs_server_packages:
+  - nfs-kernel-server

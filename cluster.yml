@@ -1,0 +1,158 @@
+---
+- name: Cluster set-up (master + zeros, optional picluster + management)
+  hosts: "master:zerocluster:management{{ slurmstack_include_picluster | default(false) | ternary(':picluster','') }}"
+  become: true
+  vars_files:
+    - vars/vars.yml
+    - vars/cluster.yml
+
+  roles:
+    - role: hostname
+    - role: installpkg
+      # apt_pkg now composed from apt_pkg_base + apt_pkg_extra (per-group)
+      installpkg_packages: "{{ apt_pkg }}"
+    - role: nfs_server
+      when: inventory_hostname == nfs_server_host
+    - role: slurmstack
+      when: slurmstack_enable | default(false)
+    - role: docker_runtime
+      when: docker_runtime_enable | default(true)
+    - role: k3s_cluster
+      when: k3s_cluster_enable | default(false)
+
+  tasks:
+    - name: Ensure primary cluster user exists on all nodes
+      ansible.builtin.user:
+        name: "{{ pi_user }}"
+        groups: sudo
+        append: true
+        shell: /bin/bash
+        password: "{{ pi_pwhash }}"
+        create_home: true
+      tags: ['user']
+
+    - name: "Create mountpoints"
+      ansible.builtin.file:
+        path: "{{ clhat_mpnt }}"
+        state: directory
+        owner: root
+        group: sudo
+        mode: "02775"
+
+    - name: Mount shared data (from NFS server {{ nfs_server_host }})
+      ansible.posix.mount:
+        path: /opt/data
+        src: "{{ nfs_server_host }}:{{ nfs_export_path }}"
+        opts: rw,sync,hard,intr
+        state: mounted
+        fstype: nfs
+      when: inventory_hostname != nfs_server_host
+
+    - name: Create alias file
+      become: true
+      become_user: "{{ pi_user }}"
+      ansible.builtin.file:
+        path: ~/.bash_aliases
+        state: touch
+        mode: "0644"
+
+    - name: Set up aliases
+      become: true
+      become_user: "{{ pi_user }}"
+      ansible.builtin.lineinfile:
+        path: ~/.bash_aliases
+        line: "{{ item }}"
+        state: present
+      loop:
+        - 'alias ll="exa -Slhg --icons"'
+        - 'alias la="exa -Slhga --icons"'
+        - 'alias lt="exa -T --icons"'
+      tags: ['shell']
+
+    - name: Ensure .ssh directory
+      become: true
+      become_user: "{{ pi_user }}"
+      ansible.builtin.file:
+        path: ~/.ssh
+        state: directory
+        mode: '0700'
+      tags: ['ssh']
+
+    - name: Install cluster public key
+      become: true
+      become_user: "{{ pi_user }}"
+      ansible.builtin.lineinfile:
+        path: ~/.ssh/authorized_keys
+        line: "{{ cluster_public_ssh_key }}"
+        create: true
+        mode: '0600'
+        state: present
+      tags: ['ssh']
+
+    - name: Generate controller keypair if missing
+      ansible.builtin.include_tasks: tasks/ssh.yml
+      when: inventory_hostname == 'clusterhat'
+      tags: ['ssh']
+
+    - name: Read controller private key (run once on clusterhat)
+      ansible.builtin.slurp:
+        src: "/home/{{ pi_user }}/.ssh/id_rsa"
+      register: controller_private_key
+      when: inventory_hostname == 'clusterhat'
+      run_once: true
+      become: true
+      become_user: "{{ pi_user }}"
+      tags: ['ssh']
+
+    - name: Read controller public key (run once on clusterhat)
+      ansible.builtin.slurp:
+        src: "/home/{{ pi_user }}/.ssh/id_rsa.pub"
+      register: controller_public_key
+      when: inventory_hostname == 'clusterhat'
+      run_once: true
+      become: true
+      become_user: "{{ pi_user }}"
+      tags: ['ssh']
+
+    - name: Set shared key facts
+      ansible.builtin.set_fact:
+        cluster_shared_private_key: "{{ controller_private_key.content | b64decode }}"
+        cluster_shared_public_key:  "{{ controller_public_key.content  | b64decode }}"
+      when: controller_private_key is defined and controller_public_key is defined
+      run_once: true
+      tags: ['ssh']
+
+    - name: Distribute shared private key to other nodes
+      ansible.builtin.copy:
+        dest: "/home/{{ pi_user }}/.ssh/id_rsa"
+        content: "{{ hostvars[groups['clusterhat'][0] | default('clusterhat')].cluster_shared_private_key }}"
+        owner: "{{ pi_user }}"
+        group: "{{ pi_user }}"
+        mode: '0600'
+      when: inventory_hostname != 'clusterhat' and (hostvars[groups['clusterhat'][0] | default('clusterhat')].cluster_shared_private_key is defined)
+      become: true
+      tags: ['ssh']
+
+    - name: Distribute shared public key to other nodes
+      ansible.builtin.copy:
+        dest: "/home/{{ pi_user }}/.ssh/id_rsa.pub"
+        content: "{{ hostvars[groups['clusterhat'][0] | default('clusterhat')].cluster_shared_public_key }}"
+        owner: "{{ pi_user }}"
+        group: "{{ pi_user }}"
+        mode: '0644'
+      when: inventory_hostname != 'clusterhat' and (hostvars[groups['clusterhat'][0] | default('clusterhat')].cluster_shared_public_key is defined)
+      become: true
+      tags: ['ssh']
+
+    - name: Ensure shared public key is in authorized_keys everywhere
+      ansible.builtin.lineinfile:
+        path: "/home/{{ pi_user }}/.ssh/authorized_keys"
+        line: "{{ hostvars[groups['clusterhat'][0] | default('clusterhat')].cluster_shared_public_key | default(cluster_public_ssh_key) }}"
+        create: true
+        mode: '0600'
+      become: true
+      become_user: "{{ pi_user }}"
+      tags: ['ssh']
+
+  # slurmstack / docker_runtime / k3s handled via roles above
+  # vim: set ft=yaml.ansible ts=4 sw=2 tw=80 et :

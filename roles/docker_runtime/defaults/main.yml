@@ -1,0 +1,5 @@
+---
+docker_runtime_enable: true
+docker_runtime_on_zeros: false
+docker_runtime_packages:
+  - docker.io

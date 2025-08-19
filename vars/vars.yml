@@ -1,5 +1,17 @@
 ---
-usbboot_uninstall: yes
+usbboot_uninstall: no
 clhat_mpnt:        /opt/data
-usbboot_img:       "/opt/data/sources/os/images/2022-01-28-1-ClusterCTRL-armhf-lite-usbboot.tar.xz"
-node_img:          "/opt/data/sources/os/images/2022-01-28-1-ClusterCTRL-armhf-lite-{{ inventory_hostname }}.img"
+usbboot_img:       "https://dist1.8086.net/clusterctrl/usbboot/bookworm/2024-07-04/2024-07-04-3-bookworm-ClusterCTRL-armhf-lite-usbboot.tar.xz"
+usbboot_img_checksum: ''   # Optional sha256:HEX or md5:HEX to verify download (leave empty to skip)
+clusterctrl_bin:   "/usr/sbin/clusterctrl"
+usbboot_download_dir: "/home/{{ ansible_user | default('tripkipke') }}" # Where to download usbboot archives
+# Simplified ClusterHAT USB boot settings (following official documentation)
+usbboot_clean_before_extract: true                                   # Remove existing contents of target pN dir before extract
+usbboot_enable_ssh: true                                             # Create ssh flag file
+usbboot_skip_prereq_install: false                                   # Skip installing prerequisite packages
+usbboot_wait_for_ssh: true                                           # After power-on, wait for SSH on zeros
+usbboot_ssh_wait_timeout: 300                                        # Seconds to wait for SSH per node
+usbboot_force_reextract: false                                       # Force re-extract even if marker present
+usbboot_always_refresh: true                                         # When true always clean/extract; when false use marker idempotence
+power_on: true                                                       # Auto power on Zero ports after provisioning
+usbboot_cnat_net: "172.19.181"                                       # Base CNAT network (controller .254, zeros .1-.4)

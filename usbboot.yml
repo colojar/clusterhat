@@ -1,22 +1,76 @@
 ---
-- name: Clusterhat set-up
-  hosts: localhost
+- name: ClusterHAT usbboot provisioning
+  hosts: clusterhat
   gather_facts: true
   vars_files:
     - vars/vars.yml
   tasks:
+    - name: Get Cluster Status
+      ansible.builtin.command: "{{ clusterctrl_bin }} status"
+      register: cluster_status
+      changed_when: false
+      tags: ['usbboot','power']
+
+    - name: Set cluster_power_status fact (reuse status output)
+      ansible.builtin.set_fact:
+        cluster_power_status: "{{ cluster_status }}"
+      tags: ['usbboot','power']
+
+    - name: Power off all zeros
+      ansible.builtin.command: "{{ clusterctrl_bin }} off"
+      become: true
+      changed_when: false
+      failed_when: false
+      run_once: true
+      tags: ['usbboot','power']
+
+    - name: Refresh cluster status after power off
+      ansible.builtin.command: "{{ clusterctrl_bin }} status"
+      register: cluster_status_after_off
+      changed_when: false
+      tags: ['usbboot','power','status']
+
+    - name: Update cluster_power_status with refreshed output
+      ansible.builtin.set_fact:
+        cluster_power_status: "{{ cluster_status_after_off }}"
+      tags: ['usbboot','power','status']
+
     - name: Set up usbboot
       ansible.builtin.include_tasks: tasks/usbboot.yml
+      tags: ['usbboot','provision']
 
-    - name: Start zerocluster
-      ansible.builtin.command: clusterctrl on
+    - name: Power on node if off
+      ansible.builtin.command:
+        argv: ["{{ clusterctrl_bin }}", "on", "p{{ zero_node | regex_search('[0-9]+') }}"]
+      loop: "{{ groups['zerocluster'] }}"
+      loop_control:
+        loop_var: zero_node
+      become: true
+      when: power_on | default(true) | bool and
+            ("p" + (zero_node | regex_search('[0-9]+')) + ":0") in cluster_power_status.stdout
+      tags: ['usbboot','power']
+
+    - name: Final status
+      ansible.builtin.command:
+        argv: ["{{ clusterctrl_bin }}", "status"]
+      register: final_status
       changed_when: false
+      become: true
+      run_once: true
+      tags: ['usbboot','status']
 
-    - name: Wait until all nodes are started
-      ansible.builtin.wait_for:
-        port: 22
-        host: "{{ inventory_hostname }}"
-        search_regex: OpenSSH
-        delay: 10
-      connection: local
+    - name: Summarize provisioning results
+      ansible.builtin.debug:
+        msg: >-
+          Archive={{ usbboot_local_archive_path }} present={{ usbboot_archive_stat.stat.exists | default('n/a') }};
+          Extracted nodes={{ groups['zerocluster'] | join(',') }}; Power managed={{ power_on | default(true) }}.
+      run_once: true
+      tags: ['usbboot','summary']
+
+    - name: Show final status
+      ansible.builtin.debug:
+        var: final_status.stdout
+      run_once: true
+      tags: ['usbboot','status']
+
 # vim: set ft=yaml.ansible ts=4 sw=2 tw=80 et :

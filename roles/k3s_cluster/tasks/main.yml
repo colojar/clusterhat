@@ -1,0 +1,47 @@
+---
+- name: Download k3s install script (server)
+  ansible.builtin.get_url:
+    url: https://get.k3s.io
+    dest: /tmp/k3s-install.sh
+    mode: '0755'
+  changed_when: false
+  when: k3s_cluster_enable and inventory_hostname == k3s_cluster_server_host
+
+- name: Run k3s server install
+  ansible.builtin.shell: |
+    set -o pipefail
+    INSTALL_K3S_VERSION={{ k3s_cluster_version | default('') }} \
+    /tmp/k3s-install.sh {{ k3s_cluster_server_extra_args }}
+  args:
+    creates: /usr/local/bin/k3s
+  when: k3s_cluster_enable and inventory_hostname == k3s_cluster_server_host
+
+- name: Fetch k3s node token
+  ansible.builtin.slurp:
+    src: /var/lib/rancher/k3s/server/node-token
+  register: k3s_node_token
+  when: k3s_cluster_enable and inventory_hostname == k3s_cluster_server_host
+
+- name: Set fact for node token
+  ansible.builtin.set_fact:
+    k3s_cluster_node_token: "{{ k3s_node_token['content'] | b64decode | trim }}"
+  when: k3s_cluster_enable and inventory_hostname == k3s_cluster_server_host
+
+- name: Download k3s install script (agent)
+  ansible.builtin.get_url:
+    url: https://get.k3s.io
+    dest: /tmp/k3s-install.sh
+    mode: '0755'
+  changed_when: false
+  when: k3s_cluster_enable and inventory_hostname != k3s_cluster_server_host and ('picluster' in group_names or 'management' in group_names or 'master' in group_names)
+
+- name: Install k3s agent
+  ansible.builtin.shell: |
+    set -o pipefail
+    K3S_URL=https://{{ k3s_cluster_server_host }}:6443 \
+    K3S_TOKEN={{ hostvars[k3s_cluster_server_host].k3s_cluster_node_token }} \
+    INSTALL_K3S_VERSION={{ k3s_cluster_version | default('') }} \
+    /tmp/k3s-install.sh agent {{ k3s_cluster_agent_extra_args }}
+  args:
+    creates: /usr/local/bin/k3s-agent-uninstall.sh
+  when: k3s_cluster_enable and inventory_hostname != k3s_cluster_server_host and ('picluster' in group_names or 'management' in group_names or 'master' in group_names)

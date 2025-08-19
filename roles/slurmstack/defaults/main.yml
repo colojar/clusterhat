@@ -1,0 +1,10 @@
+---
+slurmstack_enable: false
+slurmstack_include_picluster: false
+slurmstack_munge_pkg: ['munge']
+slurmstack_slurm_pkgs_master: ['munge', 'slurm-wlm']
+slurmstack_slurm_pkgs_node: ['munge', 'slurmd', 'slurm-client']
+slurmstack_config_files:
+  - slurm.conf
+  - cgroup.conf
+  - cgroup_allowed_devices_file.conf

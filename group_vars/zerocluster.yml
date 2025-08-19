@@ -1,5 +1,5 @@
 ---
-apt_pkg:
+apt_pkg_extra:
   - htop
   - ncat
   - dstat
