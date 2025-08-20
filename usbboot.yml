@@ -1,9 +1,13 @@
 ---
 - name: ClusterHAT usbboot provisioning
   hosts: clusterhat
+  become: true
   gather_facts: true
   vars_files:
     - vars/usbboot.yml
+  roles:
+    - role: clusterhat_network
+      when: inventory_hostname == 'clusterhat'
   tasks:
     - name: Get Cluster Status
       ansible.builtin.command: "{{ clusterctrl_bin }} status"

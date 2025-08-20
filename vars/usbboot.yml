@@ -13,5 +13,4 @@ usbboot_ssh_wait_timeout: 300                                        # Seconds t
 usbboot_force_reextract: false                                       # Force re-extract even if marker present
 usbboot_always_refresh: true                                         # When true always clean/extract; when false use marker idempotence
 usbboot_manage_hosts: true                                           # Inject cluster host entries into each zero rootfs /etc/hosts
-power_on: true                                                      # Auto power on Zero ports after provisioning
-usbboot_cnat_net: "172.19.181"                                       # Base CNAT network (controller .254, zeros .1-.4)
+power_on: true                                                       # Auto power on Zero ports after provisioning

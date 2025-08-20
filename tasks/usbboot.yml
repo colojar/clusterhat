@@ -2,7 +2,7 @@
 # ClusterHAT USB boot provisioning following official documentation
 # Documentation: https://8086.support/content/23/97/en/how-do-i-boot-pi-zeros-without-sd-cards-cluster-hat_cluster-ctrl.html
 # Assumptions:
-#  - Controller running ClusterCTRL CNAT/CBRIDGE image with /var/lib/clusterctrl structure
+#  - Controller running ClusterCTRL CBRIDGE image with /var/lib/clusterctrl structure
 #  - Variables expected: usbboot_img (HTTP(S) URL to armhf usbboot .tar.xz), clusterctrl_bin (/usr/sbin/clusterctrl),
 #    groups['zerocluster'] = list of node names (z1..z4)
 
@@ -95,6 +95,18 @@
 
 - name: Write userconf.txt for first boot user creation
   ansible.builtin.copy:
+    dest: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/boot/userconf.txt"
+    content: "{{ pi_user }}:{{ pi_pwhash }}\n"
+    mode: "0600"
+  loop: "{{ groups['zerocluster'] }}"
+  loop_control:
+    loop_var: zero_node
+    label: "p{{ zero_node | regex_search('[0-9]+') }}"
+  become: true
+  when: pi_user is defined and pi_pwhash is defined
+
+- name: Copy userconf.txt into firmware directory as well
+  ansible.builtin.copy:
     dest: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/boot/firmware/userconf.txt"
     content: "{{ pi_user }}:{{ pi_pwhash }}\n"
     mode: "0600"
@@ -116,28 +128,6 @@
     label: "p{{ zero_node | regex_search('[0-9]+') }}"
   become: true
   when: usbboot_enable_ssh | default(true) | bool
-
-- name: Ensure user home .ssh directory (pre usbboot-init)
-  ansible.builtin.file:
-    path: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/home/{{ pi_user | default('pi') }}/.ssh"
-    state: directory
-    mode: '0700'
-  loop: "{{ groups['zerocluster'] }}"
-  loop_control:
-    loop_var: zero_node
-  become: true
-  when: cluster_public_ssh_key is defined
-
-- name: Pre-populate authorized_keys in user home
-  ansible.builtin.copy:
-    dest: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/home/{{ pi_user | default('pi') }}/.ssh/authorized_keys"
-    content: "{{ cluster_public_ssh_key }}\n"
-    mode: '0600'
-  loop: "{{ groups['zerocluster'] }}"
-  loop_control:
-    loop_var: zero_node
-  become: true
-  when: cluster_public_ssh_key is defined
 
 - name: Ensure /opt/data mount point exists in rootfs
   ansible.builtin.file:
@@ -170,7 +160,9 @@
     marker: "# {mark} ANSIBLE CLUSTER HOSTS"
     block: |-
       {% for z in groups['zerocluster'] %}
-      {{ usbboot_cnat_net }}.{{ loop.index }} {{ z }}
+      {% if hostvars[z].ipaddr is defined %}
+      {{ hostvars[z].ipaddr }} {{ z }}
+      {% endif %}
       {% endfor %}
       {% if (nfs_server_host_ip | default('')) | length > 0 %}
       {{ nfs_server_host_ip }} {{ nfs_server_host }}
@@ -181,18 +173,9 @@
   become: true
   when: usbboot_manage_hosts | default(true) | bool
 
-- name: Add authorized_keys to user home
-  ansible.builtin.copy:
-    dest: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/home/{{ pi_user | default('pi') }}/.ssh/authorized_keys"
-    content: "{{ cluster_public_ssh_key }}\n"
-    mode: '0600'
-  loop: "{{ groups['zerocluster'] }}"
-  loop_control:
-    loop_var: zero_node
-  become: true
-  when: pi_user is defined and cluster_public_ssh_key is defined
+## Runtime (post-boot) playbook will install authorized_keys once the user exists.
 
-- name: Run usbboot-init after userconf and ssh flag (always)
+- name: Run usbboot-init after userconf and ssh flag
   ansible.builtin.command: "usbboot-init {{ zero_node | regex_search('[0-9]+') }}"
   loop: "{{ groups['zerocluster'] }}"
   loop_control:
@@ -200,6 +183,22 @@
     label: "p{{ zero_node | regex_search('[0-9]+') }}"
   become: true
   changed_when: false
+
+- name: Update controller /etc/hosts with cluster nodes
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} ANSIBLE CLUSTER HOSTS"
+    block: |-
+      {% set host_groups = ['master','management','picluster','zerocluster'] %}
+      {% set seen = [] %}
+      {% for g in host_groups if groups.get(g) %}
+      {% for h in groups[g] %}
+      {% if h not in seen and (hostvars[h].ipaddr is defined) %}{{ hostvars[h].ipaddr }} {{ h }}
+      {% set _ = seen.append(h) %}{% endif %}
+      {% endfor %}
+      {% endfor %}
+  become: true
+  run_once: true
 
 - name: Display next steps
   ansible.builtin.debug:
