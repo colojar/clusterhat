@@ -61,14 +61,14 @@ A single controller host (physical hostname `clusterhat`) running ClusterCTRL CN
 | Capability | Status | Notes |
 |------------|--------|-------|
 | USB boot prep for Pi Zero nodes | ✅ | Direct per-node extract + `usbboot-init` + idempotent markers |
-| Slurm (controller + nodes) | ✅ | Aliases: `clusterhat`, `controller`, `p0` |
-| Docker runtime | ✅ | Optional on zeros via `docker_runtime_on_zeros` |
-| k3s cluster | ✅ | Server on `p5` (configurable), agents on others |
+| Slurm (controller + zeros, optional p1-4) | ✅ | Master + z1-4 by default; add p1-4 via `slurmstack_include_picluster=true` |
+| Docker runtime | ✅ | Installed only on `containers` (master + p1-5); never on zeros |
+| k3s cluster | ✅ | Server on `p5` (configurable), agents on other `containers` hosts |
 | NFS export (p5) | ✅ | `/opt/data` exported & mounted |
 | Hostname management | ✅ | Role-based |
 | Package normalization | ✅ | `apt_pkg_base` + per-group `apt_pkg_extra` |
-| SSH key distribution | ✅ | Public key injection + per-host config template |
-| Route provisioning for ZeroLAN | ✅ | Static file + runtime presence check |
+| SSH key distribution | ✅ | Public key injection + ssh_mesh per-node key exchange (full mesh trust) |
+| /etc/hosts offline population | ✅ | Block-managed hosts entries for all nodes (no DNS required) |
 | Shell quality-of-life aliases | ✅ | `exa` based `ll`, `la`, `lt` auto-installed |
 
 ---
@@ -76,16 +76,20 @@ A single controller host (physical hostname `clusterhat`) running ClusterCTRL CN
 Inventory file: `hosts`
 
 Groups:
-- `master`: `clusterhat`
-- `zerocluster`: `z1`..`z4`
-- `picluster`: `p1`..`p4` (optional for Slurm / k3s)
-- `management`: `p5`
-- Aggregate groups: `munge`, `slurm`, `containers`
+- `master`: `clusterhat` (logical controller / p0)
+- `zerocluster`: `z1`..`z4` (USB booted)
+- `picluster`: `p1`..`p4` (optional inclusion targets)
+- `management`: `p5` (NFS + k3s server)
+- `containers`: aggregate = master + picluster + management (scope for Docker & k3s)
+- `munge`: master + zerocluster (default Munge scope)
+- `slurm`: master + zerocluster (picluster conditional)
 
-### Slurm Host Aliases & k3s
-The Slurm controller uses one `NodeName` with `NodeAlias=controller,p0` so jobs referencing any of those names resolve to the controller hardware without duplicating resources.
+Host pattern in `cluster.yml` enumerates all groups (`master:zerocluster:picluster:management`); role-level `when` conditions narrow installs.
 
-The k3s server has been moved to the management node `p5` (variable `k3s_cluster_server_host`). All other eligible nodes join as agents.
+### Slurm Coverage & k3s Placement
+Slurm always: controller + zeros. Optional: add p1-4 with `slurmstack_include_picluster=true`.
+Controller aliasing uses NodeAlias in `slurm.conf` so `controller`, `clusterhat`, `p0` are interchangeable.
+k3s server: `p5` by default; agents on remaining `containers` hosts (excluding zeros for resource efficiency).
 
 ---
 ## Prerequisites
@@ -142,9 +146,9 @@ ansible-playbook -i hosts usbboot.yml
 Defined in `group_vars/all`:
 - `slurmstack_enable` (bool) – install Slurm + Munge
 - `slurmstack_include_picluster` (bool) – extend Slurm to `picluster`
-- `docker_runtime_enable` (bool)
-- `docker_runtime_on_zeros` (bool) – include Zeros in Docker install
+- `docker_runtime_enable` (bool) – Docker on `containers` only
 - `k3s_cluster_enable` (bool)
+- `expand_rootfs_zeros` (bool) – enable rootfs expansion role on zeros
 
 ---
 ## Core Variables
@@ -157,6 +161,7 @@ Defined in `group_vars/all`:
 | `apt_pkg_extra` | Per-group | Extend baseline packages group specifically |
 | `usbboot_img` | `vars/vars.yml` | Source archive (tar.xz) for Pi Zero rootfs |
 | `usbboot_*` | `vars/vars.yml` | USB boot behavior toggles (download, reextract, power control) |
+| `expand_rootfs_zeros` | `group_vars/all` | Include zeros in raspi-expand-rootfs (always active on container-class Pis) |
 | `clhat_mpnt` | `vars/vars.yml` | Mount point used for shared NFS data (default `/opt/data`) |
 
 ### Package Composition
@@ -294,7 +299,7 @@ ansible-playbook -i hosts cluster.yml --check --diff
 | Jobs submitted to `controller` fail | `scontrol show nodes clusterhat` | Confirm alias present via `NodeAlias` |
 | USB nodes not booting | `clusterctrl status` | Verify rootfs extracted & `ssh` flag present |
 | NFS mount missing | `mount | grep /opt/data` | Re-run play; ensure p5 reachable and export in `/etc/exports` |
-| Docker not running on zeros | Flag value | Set `docker_runtime_on_zeros: true` and re-run |
+| Docker not running on zeros | Expected | Design choice: Docker excluded from zeros |
 | k3s agents fail to join | Token available? | Ensure play ran on controller first; re-run with `--limit master` then agents |
 
 Logs of interest: `/var/log/slurm/*.log`, `journalctl -u slurmd -u slurmctld`, `/var/log/syslog` for USB/network issues.
