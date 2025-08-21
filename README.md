@@ -34,22 +34,22 @@ Automated provisioning for a hybrid Raspberry Pi ClusterHAT environment (Pi Zero
 
 ---
 ## Architecture
-A single controller host (physical hostname `clusterhat`) running ClusterCTRL CNAT image manages:
-- 4 Pi Zero nodes (`z1`..`z4`) via ClusterHAT v2.5 USB boot with CNAT networking (172.19.181.0/24)
+A single controller host (physical hostname `clusterhat`) running ClusterCTRL BRIDGE image manages:
+- 4 Pi Zero nodes (`z1`..`z4`) via ClusterHAT v2.5 USB boot with bridged networking (zeros appear directly on the LAN or dedicated bridge depending on bridge config)
 - Optional Pi cluster nodes (`p1`..`p4`) on main LAN
 - Optional management/storage node (`p5`, typically Pi5 with NFS export)
 - Software stack includes optional Slurm workload manager, Docker runtime, and k3s (lightweight Kubernetes)
 
 ```
             +---------------------------+
-            |        clusterhat         |  (controller Pi 4 with CNAT image)
+            |        clusterhat         |  (controller Pi 4 with BRIDGE image)
             |  IP: 172.16.2.200 (LAN)   |  (aliases: controller, p0)
             |  USB Gadget: 172.19.181.254|
             +--+----+----+----+----+----+
                |    |    |    |    | USB (ClusterHAT v2.5)
                |    |    |    |
-             z1   z2   z3   z4    (Pi Zero USB boot rootfs via CNAT)
-       172.19.181.1-4              (automatically assigned by CNAT)
+       z1   z2   z3   z4    (Pi Zero USB boot rootfs via bridge)
+    (IPs provided by upstream LAN DHCP / bridge scope)
 
   LAN (172.16.2.0/24)
    p1  p2  p3  p4        (optional compute / k3s agents / Docker)
@@ -99,11 +99,11 @@ k3s server: `p5` by default; agents on remaining `containers` hosts (excluding z
   - `community.crypto`
   - `community.general`
   - `ansible.utils`
-- Target Controller: Raspberry Pi 4 with ClusterHAT v2.5 running **ClusterCTRL CNAT** image
+- Target Controller: Raspberry Pi 4 with ClusterHAT v2.5 running **ClusterCTRL BRIDGE** image
 - Target OS for other nodes: Debian / Raspberry Pi OS (Bookworm recommended)
 - Access: SSH to all nodes (initial bootstrap for Zeros is via USB boot scaffolding)
 
-**Important**: The controller must be running a ClusterCTRL image (CNAT or CBRIDGE) from the [official ClusterHAT downloads](https://clusterctrl.com/setup-software). Regular Raspberry Pi OS will not work as it lacks the ClusterCTRL software and USB gadget configuration.
+**Important**: The controller must be running a ClusterCTRL image (BRIDGE or CNAT) from the [official ClusterHAT downloads](https://clusterctrl.com/setup-software). Regular Raspberry Pi OS will not work as it lacks the ClusterCTRL software and USB gadget configuration. This deployment now targets the BRIDGE variant so Zero nodes obtain addresses from your LAN (or a dedicated bridge) rather than the fixed 172.19.181.0/24 CNAT range.
 
 Install collections:
 ```
@@ -205,7 +205,7 @@ Playbook: `usbboot.yml` (logic in `tasks/usbboot.yml`). Revised (2025-08) to fol
 4. Creates `userconf.txt` with `<user>:<hash>` for first boot user setup (Bookworm format).
 5. Enables SSH by creating the `ssh` flag file in `boot/firmware/`.
 6. Powers on nodes using `clusterctrl on pN` commands if `power_on=true`.
-7. (Optional) Waits for SSH connectivity on the CNAT network (172.19.181.X) addresses.
+7. (Optional) Waits for SSH connectivity on the Zero node IPs (now bridge-assigned, discovered via inventory vars or DHCP reservations).
 
 Key changes from previous version:
 - Simplified to match official ClusterHAT workflow exactly
@@ -213,7 +213,7 @@ Key changes from previous version:
 - Downloads directly to controller using standard `wget`/`get_url`
 - Uses official `tar -axf` extraction method
 - Always runs `usbboot-init` as required by ClusterCTRL
-- Uses CNAT network addressing (172.19.181.1-4) for SSH waits
+- Uses bridge-assigned LAN addressing for SSH waits (no longer assumes 172.19.181.x)
 
 Idempotency markers:
 - `.usbboot_extracted` inside each `pN` rootfs directory.
@@ -227,7 +227,7 @@ Key USB variables (see `vars/vars.yml`):
 | `usbboot_force_reextract` | Force removal + re-extract even if marker exists |
 | `usbboot_clean_before_extract` | Clean target pN dir prior to extraction (default true) |
 | `usbboot_enable_ssh` | Create SSH flag file after extract |
-| `usbboot_wait_for_ssh` | Wait for SSH availability on CNAT network after powering |
+| `usbboot_wait_for_ssh` | Wait for SSH availability on bridge-assigned Zero IPs after powering |
 | `usbboot_uninstall` | Remove prepared pN directories and exit |
 | `power_on` | If true (default) attempt to power on Zero ports after provisioning |
 
@@ -241,7 +241,7 @@ Shared data mount: The NFS export mounted at `clhat_mpnt` (default `/opt/data`) 
 2. **Configure node** → `usbboot-init N` sets up boot files and network configuration
 3. **Power on node** → `clusterctrl on pN` enables USB power and gadget mode
 4. **USB enumeration** → Pi Zero appears as USB gadget device to controller
-5. **Boot process** → Zero loads kernel from USB gadget filesystem, gets IP via CNAT (172.19.181.N)
+5. **Boot process** → Zero loads kernel from USB gadget filesystem, obtains IP via bridge (DHCP)
 6. **First boot** → `userconf.txt` consumed (creates user), SSH enabled, ready for access
 7. **Subsequent boots** → Normal operation, controlled via `clusterctrl` commands
 
@@ -335,7 +335,7 @@ Below is a non-exhaustive but expanded catalogue. Prefer searching the codebase 
 | `usbboot_force_reextract` | `false` | Forces clean + extract per node. |
 | `usbboot_clean_before_extract` | `true` | Delete contents of pN dir pre-extract. |
 | `usbboot_enable_ssh` | `true` | Touch `ssh` flag. |
-| `usbboot_wait_for_ssh` | `true` | Wait for openssh on CNAT network after prep. |
+| `usbboot_wait_for_ssh` | `true` | Wait for OpenSSH on bridge-assigned Zero IPs after prep. |
 | `usbboot_uninstall` | `no` | Remove pN dirs and exit. |
 | `usbboot_skip_prereq_install` | `false` | Set true if base image already has tools. |
 | `usbboot_boot_firmware_dir` | `boot/firmware` | Adjust for older releases (`boot`). |
