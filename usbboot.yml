@@ -13,7 +13,7 @@
       ansible.builtin.command: "{{ clusterctrl_bin }} status"
       register: cluster_status
       changed_when: false
-      tags: ['usbboot','power']
+      tags: ['usbboot','power','status']
 
     - name: Set cluster_power_status fact (reuse status output)
       ansible.builtin.set_fact:
@@ -39,11 +39,11 @@
         cluster_power_status: "{{ cluster_status_after_off }}"
       tags: ['usbboot','power','status']
 
-    - name: Set up usbboot
+    - name: Set up usbboot provisioning filesystem contents
       ansible.builtin.include_tasks: tasks/usbboot.yml
       tags: ['usbboot','provision']
 
-    - name: Power on node if off
+    - name: Power on nodes
       ansible.builtin.command:
         argv: ["{{ clusterctrl_bin }}", "on", "p{{ zero_node | regex_search('[0-9]+') }}"]
       loop: "{{ groups['zerocluster'] }}"
@@ -53,6 +53,53 @@
       when: power_on | default(true) | bool and
             ("p" + (zero_node | regex_search('[0-9]+')) + ":0") in cluster_power_status.stdout
       tags: ['usbboot','power']
+
+    - name: Build list of zero IPs
+      ansible.builtin.set_fact:
+        zero_ips: >-
+          {{ groups['zerocluster'] | map('extract', hostvars, 'ipaddr') | select('defined') | list }}
+      run_once: true
+      tags: ['usbboot','wait','ssh']
+
+    - name: Wait for SSH on all zeros using until loop
+      ansible.builtin.wait_for:
+        host: "{{ item }}"
+        port: 22
+        timeout: 5
+        state: started
+      loop: "{{ zero_ips }}"
+      register: ssh_probe
+      until: ssh_probe is not failed
+      retries: 60
+      delay: 10
+      when: (zero_ips | length) > 0
+      tags: ['usbboot','wait','ssh']
+
+    - name: Create SSH directory in user home
+      ansible.builtin.file:
+        path: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/home/{{ pi_user | default('pi') }}/.ssh"
+        state: directory
+        mode: '0700'
+        owner: 1000
+        group: 1000
+      loop: "{{ groups['zerocluster'] }}"
+      loop_control:
+        loop_var: zero_node
+      become: true
+      when: cluster_public_ssh_key is defined
+
+    - name: Create authorized_keys in user home
+      ansible.builtin.copy:
+        dest: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/home/{{ pi_user | default('pi') }}/.ssh/authorized_keys"
+        content: "{{ cluster_public_ssh_key }}\n"
+        mode: '0600'
+        owner: 1000
+        group: 1000
+      loop: "{{ groups['zerocluster'] }}"
+      loop_control:
+        loop_var: zero_node
+      become: true
+      when: cluster_public_ssh_key is defined
 
     - name: Final status
       ansible.builtin.command:

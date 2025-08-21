@@ -154,17 +154,43 @@
   become: true
   when: nfs_server_host is defined and nfs_export_path is defined
 
-- name: Inject hosts entries for zerocluster and NFS server
+- name: Set offline hostnames in each zero rootfs
+  ansible.builtin.copy:
+    dest: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/etc/hostname"
+    content: "z{{ zero_node | regex_search('[0-9]+') }}\n"
+    mode: '0644'
+  loop: "{{ groups['zerocluster'] }}"
+  loop_control:
+    loop_var: zero_node
+  become: true
+  tags: ['usbboot','hostname']
+
+- name: Ensure 127.0.1.1 line has hostname
+  ansible.builtin.lineinfile:
+    path: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/etc/hosts"
+    regexp: '^127.0.1.1'
+    line: "127.0.1.1       z{{ zero_node | regex_search('[0-9]+') }}"
+    state: present
+  loop: "{{ groups['zerocluster'] }}"
+  loop_control:
+    loop_var: zero_node
+  become: true
+  tags: ['usbboot','hostname']
+
+- name: Inject hosts entries for cluster (all groups) into zero rootfs
   ansible.builtin.blockinfile:
     path: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/etc/hosts"
     marker: "# {mark} ANSIBLE CLUSTER HOSTS"
     block: |-
-      {% for z in groups['zerocluster'] %}
-      {% if hostvars[z].ipaddr is defined %}
-      {{ hostvars[z].ipaddr }} {{ z }}
-      {% endif %}
+      {% set host_groups = ['master','management','picluster','zerocluster'] %}
+      {% set seen = [] %}
+      {% for g in host_groups if groups.get(g) %}
+      {% for h in groups[g] %}
+      {% if h not in seen and (hostvars[h].ipaddr is defined) %}{{ hostvars[h].ipaddr }} {{ h }}
+      {% set _ = seen.append(h) %}{% endif %}
       {% endfor %}
-      {% if (nfs_server_host_ip | default('')) | length > 0 %}
+      {% endfor %}
+      {% if (nfs_server_host_ip | default('')) | length > 0 and nfs_server_host not in seen %}
       {{ nfs_server_host_ip }} {{ nfs_server_host }}
       {% endif %}
   loop: "{{ groups['zerocluster'] }}"
@@ -172,17 +198,6 @@
     loop_var: zero_node
   become: true
   when: usbboot_manage_hosts | default(true) | bool
-
-## Runtime (post-boot) playbook will install authorized_keys once the user exists.
-
-- name: Run usbboot-init after userconf and ssh flag
-  ansible.builtin.command: "usbboot-init {{ zero_node | regex_search('[0-9]+') }}"
-  loop: "{{ groups['zerocluster'] }}"
-  loop_control:
-    loop_var: zero_node
-    label: "p{{ zero_node | regex_search('[0-9]+') }}"
-  become: true
-  changed_when: false
 
 - name: Update controller /etc/hosts with cluster nodes
   ansible.builtin.blockinfile:
@@ -199,6 +214,15 @@
       {% endfor %}
   become: true
   run_once: true
+
+- name: Run usbboot-init after userconf and ssh flag
+  ansible.builtin.command: "usbboot-init {{ zero_node | regex_search('[0-9]+') }}"
+  loop: "{{ groups['zerocluster'] }}"
+  loop_control:
+    loop_var: zero_node
+    label: "p{{ zero_node | regex_search('[0-9]+') }}"
+  become: true
+  changed_when: false
 
 - name: Display next steps
   ansible.builtin.debug:

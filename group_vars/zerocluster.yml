@@ -5,9 +5,3 @@ slurm_pkg:
   - munge
   - slurmd
   - slurm-client
-
-# SSH access behind NAT via clusterhat jump host
-ansible_user: "{{ pi_user }}"
-# Provide pi_login_password at runtime: -e pi_login_password=plainpass
-ansible_password: "{{ pi_login_password | default('') }}"
-ansible_ssh_common_args: "-o ProxyJump=clusterhat"

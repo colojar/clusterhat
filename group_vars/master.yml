@@ -1,4 +1,5 @@
 ---
+apt_pkg_extra: []
 slurm_pkg:
   - munge
   - slurm-wlm
