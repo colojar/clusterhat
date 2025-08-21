@@ -1,0 +1,3 @@
+{% if cluster_public_ssh_key is defined %}{{ cluster_public_ssh_key | trim }}
+{% endif %}{% for k in ssh_mesh_all_keys | default([]) %}{{ k | trim }}
+{% endfor %}
