@@ -1,11 +1,10 @@
 galaxy_info:
-  author: Andrey Shpak
+  author: Jonathan Ardenoy
   description: >-
     Set hostname on target host; defaults to inventory_hostname unless overridden via vars; also updates /etc/hosts.
   company: ""
   license: license (MIT)
   min_ansible_version: 2.2.1
-  github_branch: master
   platforms:
     - name: EL
       versions:

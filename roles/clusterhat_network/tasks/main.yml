@@ -26,7 +26,7 @@
       #!/bin/bash
       set -euo pipefail
       ip addr show dev br0 | grep -q '172.16.2.200/' || ip addr add 172.16.2.200/24 brd + dev br0 metric 100
-      ip route show default | grep -q 'via 172.16.2.1' || ip route add default via 172.16.2.1 dev br0 src 172.16.2.200 metric 100
+      ip route show default | grep -q 'via 172.16.2.1 dev br0' || ip route add default via 172.16.2.1 dev br0 src 172.16.2.200 metric 100
 
 - name: Enable and start service
   ansible.builtin.systemd:

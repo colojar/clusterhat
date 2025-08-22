@@ -1,24 +1,20 @@
 ---
-- name: Hostname | Setting up hostname
+- name: Hostname | Set system hostname
   become: true
   ansible.builtin.hostname:
     name: "{{ hostname_fqdn_full }}"
 
-- name: Hostname | Update the IPv4 part of hosts file
+- name: Hostname | Render consolidated /etc/hosts
   become: true
-  ansible.builtin.lineinfile:
+  ansible.builtin.template:
+    src: hosts.j2
     dest: "{{ hostname_hosts_file_location }}"
-    regexp: "^127.0.0.1"
-    line: >-
-      127.0.0.1{{ ' ' }}{{ hostname_fqdn_full }}{% if hostname_fqdn_full != hostname_fqdn_short %}{{ ' ' }}{{ hostname_fqdn_short }}{{ ' ' }}{% endif %}localhost
-      localhost.localdomain localhost4 localhost4.localdomain4
-    state: present
+    owner: root
+    group: root
+    mode: "0644"
+    backup: "{{ hostname_hosts_backup | bool }}"
+  vars:
+    hostname_all_groups_order: [ 'master','zerocluster','picluster','management' ]
+  tags: ['hosts']
 
-- name: Hostname | Update the IPv6 part of hosts file
-  become: true
-  ansible.builtin.lineinfile:
-    dest: "{{ hostname_hosts_file_location }}"
-    regexp: "^::1"
-    line: "::1{{ ' ' }}{{ hostname_fqdn_full }}{% if hostname_fqdn_full != hostname_fqdn_short %}{{ ' ' }}{{ hostname_fqdn_short }}{% endif %}{{ ' ' }}localhost localhost.localdomain localhost6 localhost4.localdomain6 ip6-localhost ip6-loopback"
-    state: present
 # vim: set ft=yaml.ansible ts=4 sw=2 tw=80 et :

@@ -67,20 +67,6 @@
         - 'alias lt="exa -T --icons"'
       tags: ['shell']
 
-    - name: Populate /etc/hosts with cluster nodes
-      become: true
-      ansible.builtin.blockinfile:
-        path: /etc/hosts
-        marker: "# {mark} CLUSTER NODES"
-        block: |-
-          {% set groups_order = ['master','zerocluster','picluster','management'] %}
-          {% set seen = [] %}
-          {% for g in groups_order %}
-          {% for h in groups.get(g, []) %}
-          {% if h not in seen and (hostvars[h].ipaddr is defined) %}{{ hostvars[h].ipaddr }} {{ h }}
-          {% set _ = seen.append(h) %}{% endif %}
-          {% endfor %}
-          {% endfor %}
-      tags: ['hosts','network']
+    
 
 # vim: set ft=yaml.ansible ts=4 sw=2 tw=80 et :
