@@ -154,17 +154,6 @@
   become: true
   when: nfs_server_host is defined and nfs_export_path is defined
 
-- name: Set offline hostnames in each zero rootfs
-  ansible.builtin.copy:
-    dest: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/etc/hostname"
-    content: "z{{ zero_node | regex_search('[0-9]+') }}\n"
-    mode: '0644'
-  loop: "{{ groups['zerocluster'] }}"
-  loop_control:
-    loop_var: zero_node
-  become: true
-  tags: ['usbboot','hostname']
-
 - name: Run usbboot-init after userconf and ssh flag
   ansible.builtin.command: "usbboot-init {{ zero_node | regex_search('[0-9]+') }}"
   loop: "{{ groups['zerocluster'] }}"
