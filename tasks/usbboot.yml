@@ -165,56 +165,6 @@
   become: true
   tags: ['usbboot','hostname']
 
-- name: Ensure 127.0.1.1 line has hostname
-  ansible.builtin.lineinfile:
-    path: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/etc/hosts"
-    regexp: '^127.0.1.1'
-    line: "127.0.1.1       z{{ zero_node | regex_search('[0-9]+') }}"
-    state: present
-  loop: "{{ groups['zerocluster'] }}"
-  loop_control:
-    loop_var: zero_node
-  become: true
-  tags: ['usbboot','hostname']
-
-- name: Inject hosts entries for cluster (all groups) into zero rootfs
-  ansible.builtin.blockinfile:
-    path: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/etc/hosts"
-    marker: "# {mark} ANSIBLE CLUSTER HOSTS"
-    block: |-
-      {% set host_groups = ['master','management','picluster','zerocluster'] %}
-      {% set seen = [] %}
-      {% for g in host_groups if groups.get(g) %}
-      {% for h in groups[g] %}
-      {% if h not in seen and (hostvars[h].ipaddr is defined) %}{{ hostvars[h].ipaddr }} {{ h }}
-      {% set _ = seen.append(h) %}{% endif %}
-      {% endfor %}
-      {% endfor %}
-      {% if (nfs_server_host_ip | default('')) | length > 0 and nfs_server_host not in seen %}
-      {{ nfs_server_host_ip }} {{ nfs_server_host }}
-      {% endif %}
-  loop: "{{ groups['zerocluster'] }}"
-  loop_control:
-    loop_var: zero_node
-  become: true
-  when: usbboot_manage_hosts | default(true) | bool
-
-- name: Update controller /etc/hosts with cluster nodes
-  ansible.builtin.blockinfile:
-    path: /etc/hosts
-    marker: "# {mark} ANSIBLE CLUSTER HOSTS"
-    block: |-
-      {% set host_groups = ['master','management','picluster','zerocluster'] %}
-      {% set seen = [] %}
-      {% for g in host_groups if groups.get(g) %}
-      {% for h in groups[g] %}
-      {% if h not in seen and (hostvars[h].ipaddr is defined) %}{{ hostvars[h].ipaddr }} {{ h }}
-      {% set _ = seen.append(h) %}{% endif %}
-      {% endfor %}
-      {% endfor %}
-  become: true
-  run_once: true
-
 - name: Run usbboot-init after userconf and ssh flag
   ansible.builtin.command: "usbboot-init {{ zero_node | regex_search('[0-9]+') }}"
   loop: "{{ groups['zerocluster'] }}"

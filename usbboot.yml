@@ -5,9 +5,6 @@
   gather_facts: true
   vars_files:
     - vars/usbboot.yml
-  roles:
-    - role: clusterhat_network
-      when: inventory_hostname == 'clusterhat'
   tasks:
     - name: Get Cluster Status
       ansible.builtin.command: "{{ clusterctrl_bin }} status"
@@ -42,6 +39,39 @@
     - name: Set up usbboot provisioning filesystem contents
       ansible.builtin.include_tasks: tasks/usbboot.yml
       tags: ['usbboot','provision']
+
+    - name: Configure DNS for zeros (resolv.conf)
+      ansible.builtin.copy:
+        dest: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/etc/resolv.conf"
+        content: |-
+          search tripnet.be
+          nameserver 172.16.2.51
+          nameserver 1.1.1.1
+
+        owner: root
+        group: root
+        mode: '0644'
+        force: true
+      loop: "{{ groups['zerocluster'] }}"
+      loop_control:
+        loop_var: zero_node
+      become: true
+      tags: ['usbboot','dns']
+
+    - name: Configure DNS for controller (resolv.conf)
+      ansible.builtin.copy:
+        dest: "/etc/resolv.conf"
+        content: |-
+          search tripnet.be
+          nameserver 172.16.2.51
+          nameserver 1.1.1.1
+
+        owner: root
+        group: root
+        mode: '0644'
+        force: true
+      become: true
+      tags: ['usbboot','dns']
 
     - name: Power on nodes
       ansible.builtin.command:
