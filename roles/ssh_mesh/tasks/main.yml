@@ -26,15 +26,22 @@
     src: "/home/{{ mesh_user }}/.ssh/id_ed25519.pub"
   register: mesh_pub
 
-- name: Write authorized_keys with all mesh keys
-  ansible.builtin.copy:
-    dest: "/home/{{ mesh_user }}/.ssh/authorized_keys"
-    content: |-
-      {% if cluster_public_ssh_key is defined %}{{ cluster_public_ssh_key | trim }}{% endif %}
-      {% for h in groups['all'] | sort %}{% if hostvars[h].mesh_pub is defined %}
-      {{ hostvars[h].mesh_pub.content | b64decode | trim }}
-      {% endif %}{% endfor %}
-    owner: "{{ mesh_user }}"
-    group: "{{ mesh_user }}"
-    mode: '0600'
+- name: Ensure cluster controller public key is present (if provided)
+  ansible.posix.authorized_key:
+    user: "{{ mesh_user }}"
+    key: "{{ cluster_public_ssh_key }}"
+    state: present
+    manage_dir: true
+  when: cluster_public_ssh_key is defined and (cluster_public_ssh_key | trim) != ''
+  become: true
+
+- name: Ensure mesh public key from each host is present
+  ansible.posix.authorized_key:
+    user: "{{ mesh_user }}"
+    key: "{{ hostvars[item].mesh_pub.content | b64decode | trim }}"
+    state: present
+    manage_dir: true
+  loop: "{{ groups['all'] | sort }}"
+  when: hostvars[item].mesh_pub is defined
+  become: true
 
