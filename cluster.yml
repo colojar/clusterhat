@@ -6,12 +6,11 @@
     - vars/cluster.yml
 
   roles:
-    - role: hostname  # hostname everywhere
+    - role: hostname
     - role: installpkg
       installpkg_packages: "{{ apt_pkg }}"
     - role: raspi-expand-rootfs
-      when: (inventory_hostname in (groups['containers'] | default([]))) or
-            (expand_rootfs_zeros | default(false) | bool and inventory_hostname in (groups['zerocluster'] | default([])))
+      when: inventory_hostname not in (groups['zerocluster'] | default([]))
     - role: nfs_server
       when: inventory_hostname == nfs_server_host
     - role: slurmstack
@@ -67,6 +66,5 @@
         - 'alias lt="exa -T --icons"'
       tags: ['shell']
 
-    
-
+  
 # vim: set ft=yaml.ansible ts=4 sw=2 tw=80 et :

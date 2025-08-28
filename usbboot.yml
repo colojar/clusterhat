@@ -125,7 +125,7 @@
     - name: Pause to allow zeros to finish booting
       ansible.builtin.pause:
         seconds: 60
-      tags: ['usbboot','ssh','keys','wait']
+      tags: ['usbboot','wait']
 
     - name: Create SSH directory in user home
       ansible.builtin.file:
