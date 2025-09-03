@@ -5,12 +5,12 @@ usbboot_img_checksum: ''   # Optional sha256:HEX or md5:HEX to verify download (
 clusterctrl_bin:   "/usr/sbin/clusterctrl"
 usbboot_download_dir: "/home/{{ ansible_user | default('tripkipke') }}" # Where to download usbboot archives
 # Simplified ClusterHAT USB boot settings (following official documentation)
+usbboot_force_reextract: true                                        # Force re-extract even if marker present
 usbboot_clean_before_extract: true                                   # Remove existing contents of target pN dir before extract
-usbboot_enable_ssh: true                                             # Create ssh flag file
-usbboot_skip_prereq_install: false                                   # Skip installing prerequisite packages
-usbboot_wait_for_ssh: true                                           # After power-on, wait for SSH on zeros
-usbboot_ssh_wait_timeout: 300                                        # Seconds to wait for SSH per node
-usbboot_force_reextract: false                                       # Force re-extract even if marker present
 usbboot_always_refresh: true                                         # When true always clean/extract; when false use marker idempotence
-usbboot_manage_hosts: true                                           # Inject cluster host entries into each zero rootfs /etc/hosts
-power_on: true                                                       # Auto power on Zero ports after provisioning
+usbboot_enable_ssh: true                                             # Create ssh flag file
+usbboot_wait_for_ssh: true                                           # After power-on, wait for SSH on zeros
+usbboot_skip_prereq_install: false                                   # Skip installing prerequisite packages
+usbboot_ssh_wait_timeout: 300                                        # Seconds to wait for SSH per node
+usbboot_manage_hosts: true                                           # Inject cluster host entries into each zero root    ing
+sdcboot_comment_clusterctrl_dhclient: false                          # Whether to comment out ClusterCTRL block in dhclient.conf on zeros

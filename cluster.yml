@@ -6,7 +6,6 @@
     - vars/cluster.yml
 
   roles:
-    - role: hostname
     - role: installpkg
       installpkg_packages: "{{ apt_pkg }}"
     - role: raspi-expand-rootfs

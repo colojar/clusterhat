@@ -1,0 +1,30 @@
+---
+# Comment ClusterCTRL block in dhclient.conf for a single zero (zero_node provided)
+- name: Check if dhclient.conf exists
+  ansible.builtin.stat:
+    path: "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/etc/dhclient.conf"
+  register: dhc_stat
+  become: true
+
+- name: Detect uncommented lines in ClusterCTRL block
+  ansible.builtin.shell: >-
+    awk '/^# START ClusterCTRL config$/, /^# END ClusterCTRL config$/{
+          if ($0 !~ /^[[:space:]]*#/) { need=1 }
+        } END{ exit (need?0:1) }' \
+    "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/etc/dhclient.conf"
+  args:
+    executable: /bin/bash
+  register: needs_comment
+  changed_when: false
+  failed_when: false
+  when: dhc_stat.stat.exists
+  become: true
+
+- name: Comment lines within ClusterCTRL block in dhclient.conf
+  ansible.builtin.command: >-
+    sed -i '/^# START ClusterCTRL config$/,/^# END ClusterCTRL config$/{/^[[:space:]]*#/! s/^/# /}' \
+    "/var/lib/clusterctrl/nfs/p{{ zero_node | regex_search('[0-9]+') }}/etc/dhclient.conf"
+  when:
+    - dhc_stat.stat.exists
+    - needs_comment.rc is defined and needs_comment.rc == 0
+  become: true

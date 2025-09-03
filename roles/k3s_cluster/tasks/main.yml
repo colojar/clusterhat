@@ -1,4 +1,68 @@
 ---
+- name: Detect dphys-swapfile command
+  ansible.builtin.command: which dphys-swapfile
+  register: dphys_swapfile_cmd
+  changed_when: false
+  failed_when: false
+
+- name: Disable swap via dphys-swapfile
+  become: true
+  ansible.builtin.command: dphys-swapfile swapoff
+  when:
+    - k3s_cluster_enable
+    - dphys_swapfile_cmd.rc == 0
+    - ansible_swaptotal_mb | default(ansible_facts.swaptotal_mb | default(0)) | int > 0
+
+- name: Uninstall swapfile via dphys-swapfile
+  become: true
+  ansible.builtin.command:
+    cmd: dphys-swapfile uninstall
+    removes: /var/swap
+  when:
+    - k3s_cluster_enable
+    - dphys_swapfile_cmd.rc == 0
+
+- name: Gather service facts
+  ansible.builtin.service_facts:
+  when: k3s_cluster_enable
+
+- name: Disable and mask dphys-swapfile service
+  become: true
+  ansible.builtin.systemd:
+    name: dphys-swapfile
+    enabled: false
+    masked: true
+    state: stopped
+  when:
+    - k3s_cluster_enable
+    - dphys_swapfile_cmd.rc == 0 or ('dphys-swapfile.service' in ansible_facts.services | default({}))
+
+- name: Comment out swap entries in /etc/fstab
+  become: true
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^(?!#).*\s+swap\s+.*$'
+    replace: '# \0'
+    backup: true
+  when: k3s_cluster_enable
+
+- name: Check if /etc/dphys-swapfile exists
+  ansible.builtin.stat:
+    path: /etc/dphys-swapfile
+  register: dphys_swap_cfg
+  when: k3s_cluster_enable
+
+- name: Ensure CONF_SWAPSIZE=0 in /etc/dphys-swapfile (if present)
+  become: true
+  ansible.builtin.lineinfile:
+    path: /etc/dphys-swapfile
+    regexp: '^CONF_SWAPSIZE='
+    line: 'CONF_SWAPSIZE=0'
+  when:
+    - k3s_cluster_enable
+    - dphys_swapfile_cmd.rc == 0
+    - dphys_swap_cfg.stat.exists
+
 - name: Download k3s install script (server)
   ansible.builtin.get_url:
     url: https://get.k3s.io
@@ -9,11 +73,12 @@
 
 - name: Run k3s server install
   ansible.builtin.shell: |
-    set -o pipefail
-    INSTALL_K3S_VERSION={{ k3s_cluster_version | default('') }} \
     /tmp/k3s-install.sh {{ k3s_cluster_server_extra_args }}
   args:
     creates: /usr/local/bin/k3s
+    executable: /bin/bash
+  environment:
+    INSTALL_K3S_VERSION: "{{ k3s_cluster_version | default(omit) }}"
   when: k3s_cluster_enable and inventory_hostname == k3s_cluster_server_host
 
 - name: Fetch k3s node token
@@ -35,13 +100,35 @@
   changed_when: false
   when: k3s_cluster_enable and inventory_hostname != k3s_cluster_server_host and ('picluster' in group_names or 'management' in group_names or 'master' in group_names)
 
+- name: Wait for k3s server node token to be available
+  ansible.builtin.wait_for:
+    path: /var/lib/rancher/k3s/server/node-token
+    state: present
+    timeout: 600
+    delay: 5
+  delegate_to: "{{ k3s_cluster_server_host }}"
+  when: k3s_cluster_enable and inventory_hostname != k3s_cluster_server_host and ('picluster' in group_names or 'management' in group_names or 'master' in group_names)
+
+- name: Fetch k3s node token from server (delegated)
+  ansible.builtin.slurp:
+    src: /var/lib/rancher/k3s/server/node-token
+  register: k3s_node_token_for_agent
+  delegate_to: "{{ k3s_cluster_server_host }}"
+  when: k3s_cluster_enable and inventory_hostname != k3s_cluster_server_host and ('picluster' in group_names or 'management' in group_names or 'master' in group_names)
+
+- name: Set fact for agent node token
+  ansible.builtin.set_fact:
+    k3s_cluster_node_token: "{{ k3s_node_token_for_agent['content'] | b64decode | trim }}"
+  when: k3s_cluster_enable and inventory_hostname != k3s_cluster_server_host and ('picluster' in group_names or 'management' in group_names or 'master' in group_names)
+
 - name: Install k3s agent
   ansible.builtin.shell: |
-    set -o pipefail
-    K3S_URL=https://{{ k3s_cluster_server_host }}:6443 \
-    K3S_TOKEN={{ hostvars[k3s_cluster_server_host].k3s_cluster_node_token }} \
-    INSTALL_K3S_VERSION={{ k3s_cluster_version | default('') }} \
     /tmp/k3s-install.sh agent {{ k3s_cluster_agent_extra_args }}
   args:
     creates: /usr/local/bin/k3s-agent-uninstall.sh
+    executable: /bin/bash
+  environment:
+    K3S_URL: "https://{{ k3s_cluster_server_host }}:6443"
+    K3S_TOKEN: "{{ k3s_cluster_node_token }}"
+    INSTALL_K3S_VERSION: "{{ k3s_cluster_version | default(omit) }}"
   when: k3s_cluster_enable and inventory_hostname != k3s_cluster_server_host and ('picluster' in group_names or 'management' in group_names or 'master' in group_names)

@@ -1,23 +1,297 @@
 ---
-- name: Clusterhat set-up
-  hosts: zerocluster
-  gather_facts: false
+- name: Prepare NFS on cluster controller
+  hosts: master
   become: true
-
+  gather_facts: true
   vars_files:
-    - vars/vars.yml
+    - vars/cluster.yml
   tasks:
-    - name: Wait until all nodes are started
-      ansible.builtin.wait_for:
-        port: 22
-        host: "{{ inventory_hostname }}"
-        search_regex: OpenSSH
-        delay: 10
-      connection: local
+    - name: Ensure mountpoint for shared data exists
+      ansible.builtin.file:
+        path: "{{ clhat_mpnt }}"
+        state: directory
+        owner: root
+        group: sudo
+        mode: "02775"
+      tags: ['nfs','mount']
 
-    - name: Set up boot from sdcard
-      ansible.builtin.include_tasks: tasks/sdcboot.yml
+    - name: Mount shared data on controller
+      ansible.posix.mount:
+        path: "{{ clhat_mpnt }}"
+        src: "{{ nfs_server_host }}:{{ nfs_export_path }}"
+        opts: rw,sync,hard,intr
+        state: mounted
+        fstype: nfs
+      tags: ['nfs','mount']
 
-    - name: Restarting the cluster
+- name: Flash SD cards on zeros from NFS images
+  hosts: zerocluster
+  become: true
+  gather_facts: true
+  serial: "{{ sdcboot_serial | default(1) }}"
+  vars_files:
+    - vars/cluster.yml
+  vars:
+    sdcboot_marker: /var/local/.clusterhat_sd_written
+    sdcboot_device: /dev/mmcblk0
+    sdcboot_os_dir: "{{ clhat_mpnt }}/OS"
+  handlers:
+    - import_tasks: handlers/main.yml
+  tasks:
+    - name: Ensure required packages (xz-utils) are present
+      ansible.builtin.apt:
+        name: [ xz-utils, coreutils ]
+        state: present
+        update_cache: true
+      tags: ['sdcboot','packages']
+
+    - name: Ensure mountpoint for shared data exists
+      ansible.builtin.file:
+        path: "{{ clhat_mpnt }}"
+        state: directory
+        owner: root
+        group: sudo
+        mode: "02775"
+      tags: ['nfs','mount']
+
+    - name: Mount shared data on zero
+      ansible.posix.mount:
+        path: "{{ clhat_mpnt }}"
+        src: "{{ nfs_server_host }}:{{ nfs_export_path }}"
+        opts: rw,sync,hard,intr
+        state: mounted
+        fstype: nfs
+      tags: ['nfs','mount']
+
+    - name: Determine preferred OS image for this zero (per-node pN image only)
+      ansible.builtin.set_fact:
+        sdcboot_image: "{{ sdcboot_os_dir }}/2024-07-04-3-bookworm-ClusterCTRL-arm64-lite-p{{ inventory_hostname | regex_search('\\d+') }}.img.xz"
+      tags: ['sdcboot','select']
+
+    - name: Verify per-node image exists
+      ansible.builtin.stat:
+        path: "{{ sdcboot_image }}"
+      register: sdcboot_image_stat
+      changed_when: false
+      tags: ['sdcboot','select']
+
+    - name: Fail if per-node image is missing
+      ansible.builtin.fail:
+        msg: "Expected per-node image not found: {{ sdcboot_image }}"
+      when: not sdcboot_image_stat.stat.exists
+      tags: ['sdcboot','select']
+
+    - name: Stat SD flash marker
+      ansible.builtin.stat:
+        path: "{{ sdcboot_marker }}"
+      register: sd_marker
+      tags: ['sdcboot','flash']
+
+    - name: Flash compressed image to SD card (xz)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        xzcat "{{ sdcboot_image }}" | dd of={{ sdcboot_device }} bs=4M status=progress conv=fsync
+        sync
+      args:
+        executable: /bin/bash
+      when: (sdcboot_image | regex_search('\\.xz$')) and not sd_marker.stat.exists
+      tags: ['sdcboot','flash']
+      notify: Sync disks
+
+    - name: Flash uncompressed image to SD card
+      ansible.builtin.command: >-
+        dd if={{ sdcboot_image }} of={{ sdcboot_device }} bs=4M status=progress conv=fsync
+      when: (sdcboot_image is defined) and (sdcboot_image | regex_search('\\.img$')) and not sd_marker.stat.exists
+      tags: ['sdcboot','flash']
+      notify: Sync disks
+
+    - name: Create flash marker
+      ansible.builtin.file:
+        path: "{{ sdcboot_marker }}"
+        state: touch
+      when: not sd_marker.stat.exists
+      tags: ['sdcboot','flash']
+
+    - name: Create mountpoints for SD partitions
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+      loop:
+        - /mnt/root
+        - /mnt/boot
+      tags: ['sdcboot','mount']
+
+    - name: Mount sdcard filesystems
+      ansible.posix.mount:
+        path: "{{ item.path }}"
+        src: "{{ item.src }}"
+        fstype: "{{ item.fstype }}"
+        state: mounted
+      loop:
+        - { path: "/mnt/boot", src: "/dev/mmcblk0p1", fstype: "vfat" }
+        - { path: "/mnt/root", src: "/dev/mmcblk0p2", fstype: "ext4" }
+      tags: ['sdcboot','mount']
+
+    - name: Write userconf.txt on boot partition (first-boot user)
+      ansible.builtin.copy:
+        dest: /mnt/boot/userconf.txt
+        content: "{{ pi_user }}:{{ pi_pwhash }}\n"
+        mode: '0600'
+      when: pi_user is defined and pi_pwhash is defined
+      tags: ['sdcboot','user','boot']
+
+    - name: Enable SSH by creating ssh flag on boot partition
+      ansible.builtin.file:
+        path: /mnt/boot/ssh
+        state: touch
+        mode: '0644'
+      when: usbboot_enable_ssh | default(true) | bool
+      tags: ['sdcboot','ssh','boot']
+
+    - name: Check if /mnt/root/boot/firmware exists (Bookworm layout)
+      ansible.builtin.stat:
+        path: /mnt/root/boot/firmware
+      register: sd_fw_dir
+      tags: ['sdcboot','boot']
+
+    - name: Write userconf.txt in /boot/firmware as well (if present)
+      ansible.builtin.copy:
+        dest: /mnt/root/boot/firmware/userconf.txt
+        content: "{{ pi_user }}:{{ pi_pwhash }}\n"
+        mode: '0600'
+      when:
+        - pi_user is defined and pi_pwhash is defined
+        - sd_fw_dir.stat.isdir | default(false)
+      tags: ['sdcboot','user','boot']
+
+    - name: Enable SSH by creating ssh flag in /boot/firmware (if present)
+      ansible.builtin.file:
+        path: /mnt/root/boot/firmware/ssh
+        state: touch
+        mode: '0644'
+      when:
+        - usbboot_enable_ssh | default(true) | bool
+        - sd_fw_dir.stat.isdir | default(false)
+      tags: ['sdcboot','ssh','boot']
+
+    - name: Compute desired short hostname
+      ansible.builtin.set_fact:
+        sdcboot_shortname: >-
+          {{ (sdcboot_hostname_mode == 'p') | ternary('p' ~ (inventory_hostname | regex_search('\\d+')), inventory_hostname) }}
+      tags: ['sdcboot','provision','hostname']
+
+    - name: Write hostname inside SD rootfs
+      ansible.builtin.copy:
+        dest: /mnt/root/etc/hostname
+        content: "{{ sdcboot_shortname }}\n"
+        owner: root
+        group: root
+        mode: '0644'
+      tags: ['sdcboot','provision','hostname']
+
+    - name: Render /etc/hosts inside SD rootfs
+      ansible.builtin.template:
+        src: roles/hostname/templates/hosts.j2
+        dest: /mnt/root/etc/hosts
+        owner: root
+        group: root
+        mode: '0644'
+      vars:
+        hostname_all_groups_order: [ 'master','zerocluster','picluster','management' ]
+        hostname_fqdn_short: "{{ sdcboot_shortname }}"
+      tags: ['sdcboot','provision','hosts']
+
+    - name: Write resolv.conf inside SD rootfs
+      ansible.builtin.copy:
+        dest: /mnt/root/etc/resolv.conf
+        content: |-
+          search tripnet.be
+          nameserver 172.16.2.51
+          nameserver 1.1.1.1
+        owner: root
+        group: root
+        mode: '0644'
+      tags: ['sdcboot','provision','dns']
+
+    # - name: Comment ClusterCTRL block in dhclient.conf inside SD rootfs (if present)
+    #   block:
+    #     - name: Check dhclient.conf presence
+    #       ansible.builtin.stat:
+    #         path: /mnt/root/etc/dhclient.conf
+    #       register: sd_dhclient_stat
+
+    #     - name: Detect uncommented lines in ClusterCTRL block
+    #       ansible.builtin.shell: >-
+    #         awk '/^# START ClusterCTRL config$/, /^# END ClusterCTRL config$/{
+    #               if ($0 !~ /^[[:space:]]*#/) { need=1 }
+    #             } END{ exit (need?0:1) }' \
+    #         /mnt/root/etc/dhclient.conf
+    #       args:
+    #         executable: /bin/bash
+    #       register: sd_dhclient_needs_comment
+    #       changed_when: false
+    #       failed_when: false
+    #       when: sd_dhclient_stat.stat.exists
+
+    #     - name: Comment lines within ClusterCTRL block
+    #       ansible.builtin.command: >-
+    #         sed -i '/^# START ClusterCTRL config$/,/^# END ClusterCTRL config$/{/^[[:space:]]*#/! s/^/# /}' \
+    #         /mnt/root/etc/dhclient.conf
+    #       when:
+    #         - sd_dhclient_stat.stat.exists
+    #         - sd_dhclient_needs_comment.rc is defined and sd_dhclient_needs_comment.rc == 0
+    #   tags: ['sdcboot','provision','network']
+    #   when: sdcboot_comment_clusterctrl_dhclient | bool
+
+    - name: Ensure /opt/data mount point exists in flashed rootfs
+      ansible.builtin.file:
+        path: /mnt/root/opt/data
+        state: directory
+        mode: '02775'
+        owner: root
+        group: sudo
+      when: nfs_server_host is defined and nfs_export_path is defined
+      tags: ['sdcboot','nfs']
+
+    - name: Add NFS share to fstab in flashed rootfs
+      ansible.builtin.lineinfile:
+        path: /mnt/root/etc/fstab
+        line: "{{ nfs_server_host }}:{{ nfs_export_path }} /opt/data nfs rw,sync,hard,intr 0 0"
+        state: present
+        create: false
+        insertafter: EOF
+      when: nfs_server_host is defined and nfs_export_path is defined
+      tags: ['sdcboot','nfs']
+
+    - name: Flush pending syncs before unmount
+      ansible.builtin.meta: flush_handlers
+
+    - name: Unmount sdcard
+      ansible.posix.mount:
+        path: "{{ item.path }}"
+        src: "{{ item.src }}"
+        fstype: "{{ item.fstype }}"
+        state: absent
+      loop:
+        - { path: "/mnt/boot", src: "/dev/mmcblk0p1", fstype: "vfat" }
+        - { path: "/mnt/root", src: "/dev/mmcblk0p2", fstype: "ext4" }
+      tags: ['sdcboot','mount']
+
+    - name: Clear SSH known_hosts entries on controller for this zero (by name)
+      ansible.builtin.command: "ssh-keygen -R {{ inventory_hostname }} || true"
+      delegate_to: clusterhat
+      changed_when: false
+      tags: ['sdcboot','ssh']
+
+    - name: Clear SSH known_hosts entries on controller for this zero (by IP)
+      ansible.builtin.command: "ssh-keygen -R {{ hostvars[inventory_hostname].ipaddr }} || true"
+      when: hostvars[inventory_hostname].ipaddr is defined
+      delegate_to: clusterhat
+      changed_when: false
+      tags: ['sdcboot','ssh']
+
+    - name: Reboot after flashing
       ansible.builtin.reboot:
+        reboot_timeout: 1200
+      tags: ['sdcboot','reboot']
 # vim: set ft=yaml.ansible ts=4 sw=2 tw=80 et :
